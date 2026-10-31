@@ -15,6 +15,14 @@ public class AccountTests
     }
 
     [Fact]
+    public void Debit_And_Credit_AreNotPublic()
+    {
+        // проводки создаёт только Transfer
+        Assert.Null(typeof(Account).GetMethod("Debit"));
+        Assert.Null(typeof(Account).GetMethod("Credit"));
+    }
+
+    [Fact]
     public void Open_RejectsOwnerLongerThanLimit()
     {
         Assert.Throws<DomainValidationException>(() => Account.Open(new string('x', Account.MaxOwnerLength + 1), "RUB", Now));

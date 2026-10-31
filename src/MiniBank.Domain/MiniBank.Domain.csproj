@@ -6,4 +6,9 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="MiniBank.Domain.Tests" />
+    <InternalsVisibleTo Include="MiniBank.Infrastructure.Tests" />
+  </ItemGroup>
+
 </Project>

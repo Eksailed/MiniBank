@@ -43,7 +43,7 @@ public sealed class Account
 
     public void Block() => Status = AccountStatus.Blocked;
 
-    public LedgerEntry Debit(Guid transferId, Money amount, DateTimeOffset now)
+    internal LedgerEntry Debit(Guid transferId, Money amount, DateTimeOffset now)
     {
         EnsureOperable(amount);
 
@@ -63,7 +63,7 @@ public sealed class Account
         return Apply(transferId, -amount.Amount, newBalance, now);
     }
 
-    public LedgerEntry Credit(Guid transferId, Money amount, DateTimeOffset now)
+    internal LedgerEntry Credit(Guid transferId, Money amount, DateTimeOffset now)
     {
         EnsureOperable(amount);
 
