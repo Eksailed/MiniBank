@@ -1,8 +1,9 @@
 import { createBrowserRouter, createMemoryRouter, type RouteObject } from 'react-router'
 import { AccountPage, HomePage } from '../features/accounts'
+import { DepositPage, TransferPage } from '../features/transfers'
 import { AppShell } from '../shared/ui'
 
-// Заглушки заменяются настоящими страницами в следующих задачах.
+// Заглушка заменяется настоящей страницей в следующей задаче.
 const Placeholder = () => null
 
 const routes: RouteObject[] = [
@@ -11,8 +12,8 @@ const routes: RouteObject[] = [
     children: [
       { path: '/', element: <HomePage /> },
       { path: '/accounts/:id', element: <AccountPage /> },
-      { path: '/accounts/:id/deposit', element: <Placeholder /> },
-      { path: '/accounts/:id/transfer', element: <Placeholder /> },
+      { path: '/accounts/:id/deposit', element: <DepositPage /> },
+      { path: '/accounts/:id/transfer', element: <TransferPage /> },
       { path: '/accounts/:id/entries', element: <Placeholder /> },
     ],
   },

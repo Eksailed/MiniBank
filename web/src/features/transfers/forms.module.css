@@ -1,0 +1,19 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.back {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.title {
+  font-size: 24px;
+}
+
+.currency {
+  color: var(--muted);
+}

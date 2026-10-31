@@ -1,3 +1,4 @@
+export { AccountGate } from './AccountGate'
 export { AccountPage } from './AccountPage'
 export { createLocalStorageDirectory, type AccountDirectory } from './directory'
 export { DirectoryProvider, useAccountDirectory } from './DirectoryProvider'

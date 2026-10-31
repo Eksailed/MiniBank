@@ -19,9 +19,3 @@
 .muted {
   color: var(--muted);
 }
-
-.notFound {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
