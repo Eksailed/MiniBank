@@ -4,3 +4,6 @@ obj/
 .idea/
 *.user
 TestResults/
+
+web/node_modules/
+web/dist/
