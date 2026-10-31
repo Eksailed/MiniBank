@@ -120,6 +120,65 @@ public class InvariantsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task ConcurrentStorm_KeepsAllInvariants()
+    {
+        await using var factory = await ApiFactory.CreateAsync(postgres);
+        using var client = factory.CreateClient();
+        var accounts = new List<AccountDto>();
+        for (var i = 0; i < 5; i++)
+        {
+            var account = await CreateAccountAsync(client, $"owner{i}");
+            (await client.PostAsJsonAsync($"/accounts/{account.Id}/deposit", new { amount = 10000, currency = "RUB" }))
+                .EnsureSuccessStatusCode();
+            accounts.Add(account);
+        }
+
+        var random = new Random(7);
+        var requests = Enumerable.Range(0, 300).Select(_ =>
+        {
+            var from = accounts[random.Next(accounts.Count)];
+            var to = accounts.Where(a => a.Id != from.Id).ElementAt(random.Next(accounts.Count - 1));
+            var amount = random.Next(1, 501);
+            return (Func<Task<HttpResponseMessage>>)(() => client.PostAsJsonAsync("/transfers",
+                new { fromAccountId = from.Id, toAccountId = to.Id, amount, currency = "RUB" }));
+        }).ToList();
+
+        var responses = await ParallelRunner.RunAsync(requests, 16);
+
+        Assert.All(responses, r => Assert.True(
+            r.StatusCode is HttpStatusCode.OK or HttpStatusCode.UnprocessableEntity,
+            $"Unexpected status {r.StatusCode}"));
+        Assert.Contains(responses, r => r.StatusCode == HttpStatusCode.OK);
+
+        var sum = await QueryAsync(factory.ConnectionString, "SELECT COALESCE(SUM(balance), 0) FROM accounts", 1);
+        Assert.Equal(0m, Convert.ToDecimal(sum.Single()[0]));
+
+        var balances = await QueryAsync(factory.ConnectionString, """
+            SELECT a.id, a.balance, COALESCE(SUM(e.amount), 0), a.is_system
+            FROM accounts a LEFT JOIN ledger_entries e ON e.account_id = a.id
+            GROUP BY a.id, a.balance, a.is_system
+            """, 4);
+        Assert.All(balances, row =>
+        {
+            Assert.Equal(Convert.ToDecimal(row[1]), Convert.ToDecimal(row[2]));
+            if (!(bool)row[3])
+                Assert.True(Convert.ToDecimal(row[1]) >= 0);
+        });
+
+        var transfers = await QueryAsync(factory.ConnectionString, """
+            SELECT t.id, COUNT(e.id), COALESCE(SUM(e.amount), 0)
+            FROM transfers t LEFT JOIN ledger_entries e ON e.transfer_id = t.id
+            GROUP BY t.id
+            """, 3);
+        Assert.NotEmpty(transfers);
+        Assert.All(transfers, row =>
+        {
+            Assert.Equal(2L, Convert.ToInt64(row[1]));
+            Assert.Equal(0m, Convert.ToDecimal(row[2]));
+        });
+    }
+
+    [Fact]
     public async Task Swagger_ListsAllFiveEndpoints()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);

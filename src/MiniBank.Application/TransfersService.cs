@@ -14,26 +14,33 @@ public sealed class TransfersService(
 
         var money = Money.Of(amount, currency);
 
-        var from = await accounts.FindAsync(fromId, ct) ?? throw new AccountNotFoundException(fromId);
-        var to = await accounts.FindAsync(toId, ct) ?? throw new AccountNotFoundException(toId);
-        if (from.IsSystem || to.IsSystem)
-            throw new TransferNotAllowedException("System accounts cannot take part in client transfers.");
+        return await uow.ExecuteInTransactionAsync(async token =>
+        {
+            var locked = await accounts.FindForUpdateAsync([fromId, toId], token);
+            var from = locked.GetValueOrDefault(fromId) ?? throw new AccountNotFoundException(fromId);
+            var to = locked.GetValueOrDefault(toId) ?? throw new AccountNotFoundException(toId);
+            if (from.IsSystem || to.IsSystem)
+                throw new TransferNotAllowedException("System accounts cannot take part in client transfers.");
 
-        return await ExecuteAsync(from, to, money, ct);
+            return await ExecuteAsync(from, to, money, token);
+        }, ct);
     }
 
     public async Task<TransferDto> DepositAsync(Guid accountId, long amount, string? currency, CancellationToken ct)
     {
         var money = Money.Of(amount, currency);
-
-        var account = await accounts.FindAsync(accountId, ct) ?? throw new AccountNotFoundException(accountId);
-        if (account.IsSystem)
-            throw new TransferNotAllowedException("System accounts cannot be deposited to.");
-
         var cashId = SystemAccounts.CashId(money.Currency);
-        var cash = await accounts.FindAsync(cashId, ct) ?? throw new AccountNotFoundException(cashId);
 
-        return await ExecuteAsync(cash, account, money, ct);
+        return await uow.ExecuteInTransactionAsync(async token =>
+        {
+            var locked = await accounts.FindForUpdateAsync([accountId, cashId], token);
+            var account = locked.GetValueOrDefault(accountId) ?? throw new AccountNotFoundException(accountId);
+            if (account.IsSystem)
+                throw new TransferNotAllowedException("System accounts cannot be deposited to.");
+            var cash = locked.GetValueOrDefault(cashId) ?? throw new AccountNotFoundException(cashId);
+
+            return await ExecuteAsync(cash, account, money, token);
+        }, ct);
     }
 
     private async Task<TransferDto> ExecuteAsync(Account from, Account to, Money money, CancellationToken ct)
