@@ -30,9 +30,16 @@ describe('describeError', () => {
     expect(d.retryable).toBe(false)
   })
 
-  it.each([500, 502])('maps %i to a generic text without server detail', (status) => {
-    const d = describeError(new ApiError(status, { detail: 'secret stack trace' }))
+  it('maps 500 to a generic text without server detail', () => {
+    const d = describeError(new ApiError(500, { detail: 'secret stack trace' }))
     expect(d.hint).toBeUndefined()
+    expect(JSON.stringify(d)).not.toContain('secret')
+  })
+
+  it.each([502, 503, 504])('maps gateway error %i to a retryable "Нет связи с сервером"', (status) => {
+    const d = describeError(new ApiError(status, { detail: 'secret stack trace' }))
+    expect(d.title).toBe('Нет связи с сервером')
+    expect(d.retryable).toBe(true)
     expect(JSON.stringify(d)).not.toContain('secret')
   })
 

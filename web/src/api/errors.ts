@@ -38,6 +38,9 @@ export function describeError(err: unknown): ErrorDescription {
 
   switch (err.status) {
     case 0:
+    case 502:
+    case 503:
+    case 504:
       return { title: 'Нет связи с сервером', hint: 'Проверьте соединение и повторите', retryable: true }
     case 400:
       return {
