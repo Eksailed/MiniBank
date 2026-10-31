@@ -1,0 +1,31 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--card);
+}
+
+.heading {
+  font-size: 18px;
+}
+
+.select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.select label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.select select {
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}

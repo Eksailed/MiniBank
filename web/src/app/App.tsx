@@ -1,3 +1,14 @@
+import { useState } from 'react'
+import { RouterProvider } from 'react-router/dom'
+import { AppProviders } from './providers'
+import { createAppRouter } from './router'
+
 export default function App() {
-  return <h1>MiniBank</h1>
+  const [router] = useState(() => createAppRouter())
+
+  return (
+    <AppProviders>
+      <RouterProvider router={router} />
+    </AppProviders>
+  )
 }

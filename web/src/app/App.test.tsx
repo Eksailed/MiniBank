@@ -2,7 +2,8 @@ import { render, screen } from '@testing-library/react'
 import { expect, test } from 'vitest'
 import App from './App'
 
-test('renders MiniBank title', () => {
+test('renders the app shell with the home page', () => {
   render(<App />)
-  expect(screen.getByRole('heading', { name: 'MiniBank' })).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'MiniBank' })).toBeInTheDocument()
+  expect(screen.getByRole('heading', { name: 'Мои счета' })).toBeInTheDocument()
 })
