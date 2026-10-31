@@ -25,6 +25,9 @@ public sealed class AccountsService(IAccountRepository accounts, ILedgerQuery le
         if (pageSize is < 1 or > MaxPageSize)
             throw new DomainValidationException($"Page size must be between 1 and {MaxPageSize}.");
 
+        if ((long)(page - 1) * pageSize > int.MaxValue)
+            throw new DomainValidationException("Page is out of range.");
+
         if (await accounts.FindAsync(id, ct) is null)
             throw new AccountNotFoundException(id);
 

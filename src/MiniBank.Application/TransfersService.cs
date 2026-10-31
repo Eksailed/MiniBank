@@ -9,6 +9,9 @@ public sealed class TransfersService(
     public async Task<TransferDto> TransferAsync(
         Guid fromId, Guid toId, long amount, string? currency, CancellationToken ct)
     {
+        if (fromId == Guid.Empty || toId == Guid.Empty)
+            throw new DomainValidationException("Both fromAccountId and toAccountId are required.");
+
         var money = Money.Of(amount, currency);
 
         var from = await accounts.FindAsync(fromId, ct) ?? throw new AccountNotFoundException(fromId);

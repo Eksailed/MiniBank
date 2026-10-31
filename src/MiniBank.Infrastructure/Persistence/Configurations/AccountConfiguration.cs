@@ -15,7 +15,7 @@ internal sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
 
         builder.HasKey(a => a.Id);
         builder.Property(a => a.Id).ValueGeneratedNever();
-        builder.Property(a => a.Owner).HasMaxLength(200).IsRequired();
+        builder.Property(a => a.Owner).HasMaxLength(Account.MaxOwnerLength).IsRequired();
         builder.Property(a => a.Currency).HasMaxLength(3).IsRequired();
         builder.Property(a => a.Version).IsConcurrencyToken();
 

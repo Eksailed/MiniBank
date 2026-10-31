@@ -140,6 +140,37 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("""{"amount":10,"currency":"RUB"}""")]
+    [InlineData("""{"toAccountId":"11111111-1111-1111-1111-111111111111","amount":10,"currency":"RUB"}""")]
+    [InlineData("""{"fromAccountId":"11111111-1111-1111-1111-111111111111","amount":10,"currency":"RUB"}""")]
+    [InlineData("{ not json")]
+    [InlineData("")]
+    public async Task Transfer_MissingFieldsOrBrokenBody_Returns400(string body)
+    {
+        await using var factory = await ApiFactory.CreateAsync(postgres);
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsync("/transfers", new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("""{"currency":"RUB"}""")]
+    [InlineData("{ not json")]
+    public async Task Deposit_MissingFieldsOrBrokenBody_Returns400(string body)
+    {
+        await using var factory = await ApiFactory.CreateAsync(postgres);
+        using var client = factory.CreateClient();
+        var account = await CreateAccountAsync(client, "Alice");
+
+        var response = await client.PostAsync(
+            $"/accounts/{account.Id}/deposit", new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
     [Fact]
     public async Task Transfer_WithCashAccount_Returns422()
     {
@@ -205,6 +236,7 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/accounts/{a.Id}/entries?page=0")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/accounts/{a.Id}/entries?pageSize=0")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/accounts/{a.Id}/entries?pageSize=101")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/accounts/{a.Id}/entries?page=21474838&pageSize=100")).StatusCode);
     }
 
     [Fact]
