@@ -1,0 +1,29 @@
+.notice {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--danger);
+  background: var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.title {
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.hint {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.retry {
+  margin-top: 4px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  cursor: pointer;
+}

@@ -1,0 +1,27 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.input {
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.error {
+  font-size: 13px;
+  color: var(--danger);
+}
