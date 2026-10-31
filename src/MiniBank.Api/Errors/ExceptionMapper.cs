@@ -9,6 +9,7 @@ public static class ExceptionMapper
     {
         DomainValidationException => StatusCodes.Status400BadRequest,
         InsufficientFundsException or AccountBlockedException or TransferNotAllowedException
+            or IdempotencyKeyReuseException
             => StatusCodes.Status422UnprocessableEntity,
         AccountNotFoundException => StatusCodes.Status404NotFound,
         ConcurrencyConflictException => StatusCodes.Status409Conflict,

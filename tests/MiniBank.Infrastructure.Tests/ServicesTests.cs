@@ -32,11 +32,19 @@ public class ServicesTests(PostgresFixture postgres)
     private static Task<AccountDto> CreateAsync(ServiceProvider provider, string owner, string currency = "RUB") =>
         InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().CreateAsync(owner, currency, default));
 
-    private static Task<TransferDto> DepositAsync(ServiceProvider provider, Guid id, long amount, string currency = "RUB") =>
-        InScopeAsync(provider, sp => sp.GetRequiredService<TransfersService>().DepositAsync(id, amount, currency, default));
+    private static Task<IdempotentResult<TransferDto>> DepositWithKeyAsync(
+        ServiceProvider provider, string? key, Guid id, long amount, string currency = "RUB") =>
+        InScopeAsync(provider, sp => sp.GetRequiredService<TransfersService>().DepositAsync(key, id, amount, currency, default));
 
-    private static Task<TransferDto> TransferAsync(ServiceProvider provider, Guid from, Guid to, long amount, string currency = "RUB") =>
-        InScopeAsync(provider, sp => sp.GetRequiredService<TransfersService>().TransferAsync(from, to, amount, currency, default));
+    private static Task<IdempotentResult<TransferDto>> TransferWithKeyAsync(
+        ServiceProvider provider, string? key, Guid from, Guid to, long amount, string currency = "RUB") =>
+        InScopeAsync(provider, sp => sp.GetRequiredService<TransfersService>().TransferAsync(key, from, to, amount, currency, default));
+
+    private static async Task<TransferDto> DepositAsync(ServiceProvider provider, Guid id, long amount, string currency = "RUB") =>
+        (await DepositWithKeyAsync(provider, Guid.NewGuid().ToString(), id, amount, currency)).Value;
+
+    private static async Task<TransferDto> TransferAsync(ServiceProvider provider, Guid from, Guid to, long amount, string currency = "RUB") =>
+        (await TransferWithKeyAsync(provider, Guid.NewGuid().ToString(), from, to, amount, currency)).Value;
 
     private static Task<AccountDto> GetAsync(ServiceProvider provider, Guid id) =>
         InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().GetAsync(id, default));
@@ -233,5 +241,142 @@ public class ServicesTests(PostgresFixture postgres)
         Assert.Equal(2, aliceEntries.Count);
         Assert.Empty(await EntriesAsync(provider, carol.Id));
         await Assert.ThrowsAsync<AccountNotFoundException>(() => EntriesAsync(provider, Guid.NewGuid()));
+    }
+
+    private static Task<(int Transfers, int Keys)> CountsAsync(ServiceProvider provider) =>
+        InScopeAsync(provider, async sp =>
+        {
+            var db = sp.GetRequiredService<MiniBankDbContext>();
+            return (await db.Transfers.CountAsync(), await db.Set<IdempotencyKeyRecord>().CountAsync());
+        });
+
+    [Fact]
+    public async Task Transfer_SameKeyTwice_ReturnsSameResultAndMovesMoneyOnce()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var alice = await CreateAsync(provider, "Alice");
+        var bob = await CreateAsync(provider, "Bob");
+        await DepositAsync(provider, alice.Id, 1000);
+
+        var first = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 300);
+        var second = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 300);
+
+        Assert.False(first.Replayed);
+        Assert.True(second.Replayed);
+        Assert.Equal(first.Value, second.Value);
+        Assert.Equal(700, (await GetAsync(provider, alice.Id)).Balance);
+        Assert.Equal(300, (await GetAsync(provider, bob.Id)).Balance);
+        Assert.Equal(2, (await EntriesAsync(provider, bob.Id)).Count + 1);
+    }
+
+    [Fact]
+    public async Task Transfer_SameKeyDifferentAmount_ThrowsKeyReuse()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var alice = await CreateAsync(provider, "Alice");
+        var bob = await CreateAsync(provider, "Bob");
+        await DepositAsync(provider, alice.Id, 1000);
+        await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 300);
+
+        await Assert.ThrowsAsync<IdempotencyKeyReuseException>(() =>
+            TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 301));
+        Assert.Equal(300, (await GetAsync(provider, bob.Id)).Balance);
+    }
+
+    [Fact]
+    public async Task Deposit_AndTransferWithSameKey_ThrowsKeyReuse()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var alice = await CreateAsync(provider, "Alice");
+        var bob = await CreateAsync(provider, "Bob");
+        await DepositWithKeyAsync(provider, "key-1", alice.Id, 500);
+
+        await Assert.ThrowsAsync<IdempotencyKeyReuseException>(() =>
+            TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 500));
+    }
+
+    [Fact]
+    public async Task Transfer_LowercaseCurrencyIsSameRequest()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var alice = await CreateAsync(provider, "Alice");
+        var bob = await CreateAsync(provider, "Bob");
+        await DepositAsync(provider, alice.Id, 1000);
+
+        var first = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100, "RUB");
+        var second = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100, "rub");
+
+        Assert.True(second.Replayed);
+        Assert.Equal(first.Value, second.Value);
+    }
+
+    [Fact]
+    public async Task Transfer_FailedByBusinessRule_DoesNotHoldKey()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var alice = await CreateAsync(provider, "Alice");
+        var bob = await CreateAsync(provider, "Bob");
+
+        await Assert.ThrowsAsync<InsufficientFundsException>(() =>
+            TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100));
+        await DepositAsync(provider, alice.Id, 500);
+        var retry = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100);
+
+        Assert.False(retry.Replayed);
+        Assert.Equal(100, (await GetAsync(provider, bob.Id)).Balance);
+    }
+
+    [Fact]
+    public async Task Transfer_ParallelSameKey_CreatesExactlyOneTransfer()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var alice = await CreateAsync(provider, "Alice");
+        var bob = await CreateAsync(provider, "Bob");
+        await DepositAsync(provider, alice.Id, 1000);
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 20)
+            .Select(_ => TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100)));
+
+        Assert.Single(results.Select(r => r.Value).Distinct());
+        Assert.Equal(1, results.Count(r => !r.Replayed));
+        Assert.Equal(2, (await CountsAsync(provider)).Transfers);
+        Assert.Equal(100, (await GetAsync(provider, bob.Id)).Balance);
+    }
+
+    [Fact]
+    public async Task Transfer_ParallelSameKeyBothFail_BothThrowInsufficientFunds()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var alice = await CreateAsync(provider, "Alice");
+        var bob = await CreateAsync(provider, "Bob");
+
+        var attempts = Enumerable.Range(0, 2)
+            .Select(_ => Assert.ThrowsAsync<InsufficientFundsException>(() =>
+                TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100)));
+        await Task.WhenAll(attempts);
+
+        Assert.Equal((0, 0), await CountsAsync(provider));
+    }
+
+    public static TheoryData<string?> InvalidKeys => new()
+    {
+        null,
+        "",
+        "   ",
+        new string('k', 201),
+        "a\u0001b"
+    };
+
+    [Theory]
+    [MemberData(nameof(InvalidKeys))]
+    public async Task Key_Invalid_ThrowsValidation(string? key)
+    {
+        await using var provider = await MigratedProviderAsync();
+        var alice = await CreateAsync(provider, "Alice");
+        var bob = await CreateAsync(provider, "Bob");
+
+        await Assert.ThrowsAsync<DomainValidationException>(() => DepositWithKeyAsync(provider, key, alice.Id, 100));
+        await Assert.ThrowsAsync<DomainValidationException>(() => TransferWithKeyAsync(provider, key, alice.Id, bob.Id, 100));
+        Assert.Equal(0, (await GetAsync(provider, alice.Id)).Balance);
     }
 }

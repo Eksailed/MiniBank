@@ -26,7 +26,7 @@ public class InvariantsTests(PostgresFixture postgres)
             await CreateAccountAsync(client, "Carol")
         };
         foreach (var account in accounts)
-            (await client.PostAsJsonAsync($"/accounts/{account.Id}/deposit", new { amount = 500, currency = "RUB" }))
+            (await client.PostWithKeyAsync($"/accounts/{account.Id}/deposit", new { amount = 500, currency = "RUB" }))
                 .EnsureSuccessStatusCode();
 
         var random = new Random(42);
@@ -35,7 +35,7 @@ public class InvariantsTests(PostgresFixture postgres)
         {
             var from = accounts[random.Next(accounts.Length)];
             var to = accounts.Where(a => a.Id != from.Id).ElementAt(random.Next(accounts.Length - 1));
-            var response = await client.PostAsJsonAsync("/transfers", new
+            var response = await client.PostWithKeyAsync("/transfers", new
             {
                 fromAccountId = from.Id,
                 toAccountId = to.Id,
@@ -128,7 +128,7 @@ public class InvariantsTests(PostgresFixture postgres)
         for (var i = 0; i < 5; i++)
         {
             var account = await CreateAccountAsync(client, $"owner{i}");
-            (await client.PostAsJsonAsync($"/accounts/{account.Id}/deposit", new { amount = 10000, currency = "RUB" }))
+            (await client.PostWithKeyAsync($"/accounts/{account.Id}/deposit", new { amount = 10000, currency = "RUB" }))
                 .EnsureSuccessStatusCode();
             accounts.Add(account);
         }
@@ -139,7 +139,7 @@ public class InvariantsTests(PostgresFixture postgres)
             var from = accounts[random.Next(accounts.Count)];
             var to = accounts.Where(a => a.Id != from.Id).ElementAt(random.Next(accounts.Count - 1));
             var amount = random.Next(1, 501);
-            return (Func<Task<HttpResponseMessage>>)(() => client.PostAsJsonAsync("/transfers",
+            return (Func<Task<HttpResponseMessage>>)(() => client.PostWithKeyAsync("/transfers",
                 new { fromAccountId = from.Id, toAccountId = to.Id, amount, currency = "RUB" }));
         }).ToList();
 

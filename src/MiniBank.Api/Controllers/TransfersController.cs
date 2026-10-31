@@ -5,11 +5,14 @@ namespace MiniBank.Api.Controllers;
 
 [ApiController]
 [Route("transfers")]
-public class TransfersController(TransfersService transfers) : ControllerBase
+public class TransfersController(TransfersService transfers) : IdempotentControllerBase
 {
     [HttpPost]
     [ProducesResponseType<TransferDto>(StatusCodes.Status200OK)]
-    public async Task<TransferDto> Create(TransferRequest request, CancellationToken ct) =>
-        await transfers.TransferAsync(
-            request.FromAccountId, request.ToAccountId, request.Amount, request.Currency, ct);
+    public async Task<TransferDto> Create(
+        TransferRequest request,
+        [FromHeader(Name = IdempotencyHeaders.Key)] string? idempotencyKey,
+        CancellationToken ct) =>
+        Respond(await transfers.TransferAsync(
+            idempotencyKey, request.FromAccountId, request.ToAccountId, request.Amount, request.Currency, ct));
 }

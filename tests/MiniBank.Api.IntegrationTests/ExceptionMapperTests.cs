@@ -14,6 +14,7 @@ public class ExceptionMapperTests
         { new TransferNotAllowedException("no"), 422 },
         { new AccountNotFoundException(Guid.NewGuid()), 404 },
         { new ConcurrencyConflictException("conflict"), 409 },
+        { new IdempotencyKeyReuseException("reused"), 422 },
         { new InvalidOperationException("boom"), 500 }
     };
 

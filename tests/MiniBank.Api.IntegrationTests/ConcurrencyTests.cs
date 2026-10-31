@@ -17,7 +17,7 @@ public class ConcurrencyTests(PostgresFixture postgres)
     }
 
     private static Task<HttpResponseMessage> DepositAsync(HttpClient client, Guid id, long amount) =>
-        client.PostAsJsonAsync($"/accounts/{id}/deposit", new { amount, currency = "RUB" });
+        client.PostWithKeyAsync($"/accounts/{id}/deposit", new { amount, currency = "RUB" });
 
     private static async Task<AccountDto> GetAsync(HttpClient client, Guid id) =>
         (await client.GetFromJsonAsync<AccountDto>($"/accounts/{id}"))!;
@@ -69,7 +69,7 @@ public class ConcurrencyTests(PostgresFixture postgres)
 
         var responses = await ParallelRunner.RunAsync(
             Enumerable.Range(0, 100).Select(i => (Func<Task<HttpResponseMessage>>)(() =>
-                client.PostAsJsonAsync("/transfers", new
+                client.PostWithKeyAsync("/transfers", new
                 {
                     fromAccountId = i % 2 == 0 ? a.Id : b.Id,
                     toAccountId = i % 2 == 0 ? b.Id : a.Id,

@@ -5,7 +5,7 @@ namespace MiniBank.Api.Controllers;
 
 [ApiController]
 [Route("accounts")]
-public class AccountsController(AccountsService accounts, TransfersService transfers) : ControllerBase
+public class AccountsController(AccountsService accounts, TransfersService transfers) : IdempotentControllerBase
 {
     [HttpPost]
     [ProducesResponseType<AccountDto>(StatusCodes.Status201Created)]
@@ -21,8 +21,12 @@ public class AccountsController(AccountsService accounts, TransfersService trans
 
     [HttpPost("{id:guid}/deposit")]
     [ProducesResponseType<TransferDto>(StatusCodes.Status200OK)]
-    public async Task<TransferDto> Deposit(Guid id, DepositRequest request, CancellationToken ct) =>
-        await transfers.DepositAsync(id, request.Amount, request.Currency, ct);
+    public async Task<TransferDto> Deposit(
+        Guid id,
+        DepositRequest request,
+        [FromHeader(Name = IdempotencyHeaders.Key)] string? idempotencyKey,
+        CancellationToken ct) =>
+        Respond(await transfers.DepositAsync(idempotencyKey, id, request.Amount, request.Currency, ct));
 
     [HttpGet("{id:guid}/entries")]
     [ProducesResponseType<IReadOnlyList<EntryDto>>(StatusCodes.Status200OK)]

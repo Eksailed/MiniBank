@@ -1,20 +1,27 @@
+using System.Security.Cryptography;
+using System.Text;
 using MiniBank.Application.Abstractions;
 using MiniBank.Domain;
 
 namespace MiniBank.Application;
 
 public sealed class TransfersService(
-    IAccountRepository accounts, ITransferRepository transfers, IUnitOfWork uow, TimeProvider clock)
+    IAccountRepository accounts,
+    ITransferRepository transfers,
+    IUnitOfWork uow,
+    IdempotencyExecutor idempotency,
+    TimeProvider clock)
 {
-    public async Task<TransferDto> TransferAsync(
-        Guid fromId, Guid toId, long amount, string? currency, CancellationToken ct)
+    public async Task<IdempotentResult<TransferDto>> TransferAsync(
+        string? idempotencyKey, Guid fromId, Guid toId, long amount, string? currency, CancellationToken ct)
     {
         if (fromId == Guid.Empty || toId == Guid.Empty)
             throw new DomainValidationException("Both fromAccountId and toAccountId are required.");
 
         var money = Money.Of(amount, currency);
+        var hash = Hash($"transfer|{fromId}|{toId}|{money.Amount}|{money.Currency}");
 
-        return await uow.ExecuteInTransactionAsync(async token =>
+        return await idempotency.ExecuteAsync(idempotencyKey, hash, async token =>
         {
             var locked = await accounts.FindForUpdateAsync([fromId, toId], token);
             var from = locked.GetValueOrDefault(fromId) ?? throw new AccountNotFoundException(fromId);
@@ -26,12 +33,14 @@ public sealed class TransfersService(
         }, ct);
     }
 
-    public async Task<TransferDto> DepositAsync(Guid accountId, long amount, string? currency, CancellationToken ct)
+    public async Task<IdempotentResult<TransferDto>> DepositAsync(
+        string? idempotencyKey, Guid accountId, long amount, string? currency, CancellationToken ct)
     {
         var money = Money.Of(amount, currency);
         var cashId = SystemAccounts.CashId(money.Currency);
+        var hash = Hash($"deposit|{accountId}|{money.Amount}|{money.Currency}");
 
-        return await uow.ExecuteInTransactionAsync(async token =>
+        return await idempotency.ExecuteAsync(idempotencyKey, hash, async token =>
         {
             var locked = await accounts.FindForUpdateAsync([accountId, cashId], token);
             var account = locked.GetValueOrDefault(accountId) ?? throw new AccountNotFoundException(accountId);
@@ -42,6 +51,9 @@ public sealed class TransfersService(
             return await ExecuteAsync(cash, account, money, token);
         }, ct);
     }
+
+    private static string Hash(string canonicalRequest) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalRequest)));
 
     private async Task<TransferDto> ExecuteAsync(Account from, Account to, Money money, CancellationToken ct)
     {

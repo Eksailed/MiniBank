@@ -17,11 +17,11 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     }
 
     private static Task<HttpResponseMessage> DepositAsync(HttpClient client, Guid id, long amount, string currency = "RUB") =>
-        client.PostAsJsonAsync($"/accounts/{id}/deposit", new { amount, currency });
+        client.PostWithKeyAsync($"/accounts/{id}/deposit", new { amount, currency });
 
     private static Task<HttpResponseMessage> TransferAsync(
         HttpClient client, Guid from, Guid to, long amount, string currency = "RUB") =>
-        client.PostAsJsonAsync("/transfers", new { fromAccountId = from, toAccountId = to, amount, currency });
+        client.PostWithKeyAsync("/transfers", new { fromAccountId = from, toAccountId = to, amount, currency });
 
     private static async Task<long> BalanceAsync(HttpClient client, Guid id) =>
         (await client.GetFromJsonAsync<AccountDto>($"/accounts/{id}"))!.Balance;
@@ -151,7 +151,7 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
         await using var factory = await ApiFactory.CreateAsync(postgres);
         using var client = factory.CreateClient();
 
-        var response = await client.PostAsync("/transfers", new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
+        var response = await client.PostRawWithKeyAsync("/transfers", body);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -165,8 +165,7 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
         using var client = factory.CreateClient();
         var account = await CreateAccountAsync(client, "Alice");
 
-        var response = await client.PostAsync(
-            $"/accounts/{account.Id}/deposit", new StringContent(body, System.Text.Encoding.UTF8, "application/json"));
+        var response = await client.PostRawWithKeyAsync($"/accounts/{account.Id}/deposit", body);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
