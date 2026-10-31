@@ -1,0 +1,20 @@
+# Только PostgreSQL для локальной разработки. Строка подключения совпадает с appsettings.Development.json.
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: minibank
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - minibank-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d minibank"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  minibank-data:

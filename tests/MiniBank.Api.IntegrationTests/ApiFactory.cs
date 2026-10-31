@@ -11,6 +11,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
 
     private ApiFactory(string connectionString) => _connectionString = connectionString;
 
+    public string ConnectionString => _connectionString;
+
     public static async Task<ApiFactory> CreateAsync(PostgresFixture postgres) =>
         new(await postgres.CreateDatabaseAsync());
 
