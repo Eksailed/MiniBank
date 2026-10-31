@@ -187,6 +187,38 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                     b.ToTable("transfers", (string)null);
                 });
 
+            modelBuilder.Entity("MiniBank.Infrastructure.Persistence.IdempotencyKeyRecord", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("request_hash");
+
+                    b.Property<string>("ResponseBody")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("response_body");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_code");
+
+                    b.HasKey("Key")
+                        .HasName("pk_idempotency_keys");
+
+                    b.ToTable("idempotency_keys", (string)null);
+                });
+
             modelBuilder.Entity("MiniBank.Domain.LedgerEntry", b =>
                 {
                     b.HasOne("MiniBank.Domain.Account", null)

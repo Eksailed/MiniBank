@@ -13,6 +13,7 @@ public static class DependencyInjection
         services.AddScoped<ITransferRepository, TransferRepository>();
         services.AddScoped<ILedgerQuery, LedgerQuery>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
+        services.AddScoped<IIdempotencyStore, IdempotencyStore>();
         services.AddSingleton(TimeProvider.System);
         return services;
     }
