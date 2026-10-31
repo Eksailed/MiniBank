@@ -6,7 +6,7 @@
 
 ## Стек
 
-C#, ASP.NET Core (.NET 9), PostgreSQL 17, EF Core 9, Docker.
+C#, ASP.NET Core (.NET 9), PostgreSQL 17, EF Core 9, Docker. Веб-клиент: React, TypeScript, Vite.
 
 ## Статус
 
@@ -35,6 +35,24 @@ dotnet run --project src/MiniBank.Api
 ```bash
 dotnet test
 ```
+
+## Web
+
+Веб-клиент — React + TypeScript + Vite, лежит в `web/`. Нужен Node.js 20+.
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+Откройте <http://localhost:5173>. Клиент ходит в API на `localhost:5050` через прокси Vite (`/api` → API, префикс снимается), поэтому сначала запустите API (см. «Быстрый старт»).
+
+- Экраны: «Мои счета», счёт (баланс, последние операции), пополнение, перевод, выписка с подгрузкой страниц. Светлая и тёмная тема, выбор запоминается.
+- API не отдаёт список счетов и не требует входа, поэтому «мои счета» клиент хранит в `localStorage` браузера (счёт можно открыть или добавить по ID).
+- Каждая операция отправляется с `Idempotency-Key`: повтор после сбоя сети идёт с тем же ключом, правка суммы или получателя даёт новый.
+- Типы запросов генерируются из Swagger работающего API: `npm run gen:api`.
+- Тесты (Vitest, Testing Library, MSW; бэкенд не нужен): `npm test`. Сборка: `npm run build`.
 
 ## API
 
@@ -132,6 +150,7 @@ src/MiniBank.Domain          сущности и правила: Account, Transf
 src/MiniBank.Application     сценарии (AccountsService, TransfersService) и порты
 src/MiniBank.Infrastructure  EF Core, миграции, репозитории
 src/MiniBank.Api             контроллеры, обработка ошибок, Swagger
+web/                         веб-клиент: React + TypeScript + Vite
 tests/                       юнит-, БД- и API-тесты
 docs/                        спецификации и планы этапов
 ```
