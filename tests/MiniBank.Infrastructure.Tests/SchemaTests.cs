@@ -94,6 +94,25 @@ public class SchemaTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task LedgerTrigger_RejectsTruncate()
+    {
+        var (connectionString, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+        var from = Account.Open("a", "RUB", Now);
+        var to = Account.Open("b", "RUB", Now);
+        from.Credit(Guid.NewGuid(), Money.Of(100, "RUB"), Now);
+        context.Accounts.AddRange(from, to);
+        context.Transfers.Add(Transfer.Execute(from, to, Money.Of(10, "RUB"), Now));
+        await context.SaveChangesAsync();
+
+        var ex = await Assert.ThrowsAsync<PostgresException>(() =>
+            ExecuteAsync(connectionString, "TRUNCATE ledger_entries"));
+
+        Assert.Equal("23001", ex.SqlState);
+        Assert.Equal(2, await context.LedgerEntries.CountAsync());
+    }
+
+    [Fact]
     public async Task RoundTrip_SavesTransferWithEntries()
     {
         var (connectionString, context) = await MigratedDatabaseAsync();
