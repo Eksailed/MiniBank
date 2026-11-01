@@ -13,6 +13,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddExceptionHandler<ProblemDetailsExceptionHandler>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddHealthChecks().AddDbContextCheck<MiniBankDbContext>();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(connectionString);
 
@@ -26,12 +27,13 @@ if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 
 app.UseExceptionHandler();
 
-if (app.Environment.IsDevelopment())
+if (app.Environment.IsDevelopment() || app.Configuration.GetValue<bool>("Swagger:Enabled"))
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
 
+app.MapHealthChecks("/health");
 app.MapControllers();
 
 app.Run();
