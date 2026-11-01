@@ -142,6 +142,45 @@ public class OwnershipTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task IdempotencyKey_IsScopedPerUser_SameKeyDifferentBodyIsNotAConflict()
+    {
+        await using var factory = await ApiFactory.CreateAsync(postgres);
+        using var alice = await TestUsers.NewSignedInClientAsync(factory);
+        using var bob = await TestUsers.NewSignedInClientAsync(factory, name: "Bob");
+        var alices = await OpenAsync(alice);
+        var bobs = await OpenAsync(bob);
+
+        var first = await alice.PostWithKeyAsync($"/accounts/{alices.Id}/deposit",
+            new { amount = 100, currency = "RUB" }, key: "shared-key");
+        var second = await bob.PostWithKeyAsync($"/accounts/{bobs.Id}/deposit",
+            new { amount = 200, currency = "RUB" }, key: "shared-key");
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal(200, (await bob.GetFromJsonAsync<AccountDto>($"/accounts/{bobs.Id}"))!.Balance);
+    }
+
+    [Fact]
+    public async Task Transfer_ForeignSource404_DoesNotConsumeIdempotencyKey()
+    {
+        await using var factory = await ApiFactory.CreateAsync(postgres);
+        using var alice = await TestUsers.NewSignedInClientAsync(factory);
+        using var bob = await TestUsers.NewSignedInClientAsync(factory, name: "Bob");
+        var alices = await OpenAsync(alice);
+        var bobs = await OpenAsync(bob);
+        await DepositAsync(alice, alices.Id, 1000);
+        await DepositAsync(bob, bobs.Id, 1000);
+
+        var steal = await alice.PostWithKeyAsync("/transfers",
+            new { fromAccountId = bobs.Id, toAccountId = alices.Id, amount = 100, currency = "RUB" }, key: "retry-key");
+        var own = await alice.PostWithKeyAsync("/transfers",
+            new { fromAccountId = alices.Id, toAccountId = bobs.Id, amount = 100, currency = "RUB" }, key: "retry-key");
+
+        Assert.Equal(HttpStatusCode.NotFound, steal.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, own.StatusCode);
+    }
+
+    [Fact]
     public async Task Create_51stAccount_Returns422AccountLimitReached()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);

@@ -26,7 +26,7 @@ public sealed class TransfersService(
         // До обращения к идемпотентности: чужой ключ с чужим счётом не должен ни вернуть сохранённый ответ, ни выдать факт его наличия.
         await EnsureOwnedAsync(userId, fromId, ct);
 
-        return await idempotency.ExecuteAsync(idempotencyKey, hash, async token =>
+        return await idempotency.ExecuteAsync(userId, idempotencyKey, hash, async token =>
         {
             var locked = await accounts.FindForUpdateAsync([fromId, toId], token);
             var from = locked.GetValueOrDefault(fromId) ?? throw new AccountNotFoundException(fromId);
@@ -53,7 +53,7 @@ public sealed class TransfersService(
 
         await EnsureOwnedAsync(userId, accountId, ct);
 
-        return await idempotency.ExecuteAsync(idempotencyKey, hash, async token =>
+        return await idempotency.ExecuteAsync(userId, idempotencyKey, hash, async token =>
         {
             var locked = await accounts.FindForUpdateAsync([accountId, cashId], token);
             var account = locked.GetValueOrDefault(accountId) ?? throw new AccountNotFoundException(accountId);

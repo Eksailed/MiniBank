@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using MiniBank.Application.Abstractions;
 using MiniBank.Domain;
@@ -21,9 +23,9 @@ public sealed class IdempotencyExecutor(IUnitOfWork uow, IIdempotencyStore store
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     public async Task<IdempotentResult<T>> ExecuteAsync<T>(
-        string? key, string requestHash, Func<CancellationToken, Task<T>> operation, CancellationToken ct)
+        Guid userId, string? key, string requestHash, Func<CancellationToken, Task<T>> operation, CancellationToken ct)
     {
-        var validKey = ValidateKey(key);
+        var validKey = ScopeToUser(userId, ValidateKey(key));
 
         return await uow.ExecuteInTransactionAsync(async token =>
         {
@@ -44,6 +46,13 @@ public sealed class IdempotencyExecutor(IUnitOfWork uow, IIdempotencyStore store
             return new IdempotentResult<T>(value, Replayed: false);
         }, ct);
     }
+
+    /// <summary>
+    /// Ключ хранится вместе с владельцем: чужой запрос с тем же ключом не получает ни чужой ответ, ни 422.
+    /// Хэш исходного ключа держит длину фиксированной (≤ 200 символов колонки).
+    /// </summary>
+    private static string ScopeToUser(Guid userId, string key) =>
+        $"{userId:N}:{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)))}";
 
     private static string ValidateKey(string? key)
     {
