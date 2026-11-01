@@ -52,5 +52,9 @@ internal sealed class UnitOfWork(MiniBankDbContext db) : IUnitOfWork
         {
             throw new ConcurrencyConflictException("The account was modified by another operation. Retry the request.");
         }
+        catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } pg)
+        {
+            throw new UniqueViolationException(pg.ConstraintName ?? string.Empty);
+        }
     }
 }
