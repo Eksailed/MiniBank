@@ -126,6 +126,13 @@ public sealed class AuthService(
         return tokenIssuer.Issue(user, clock.GetUtcNow());
     }
 
+    /// <returns><c>null</c>, если пользователя с таким id нет (например, токен выдан до удаления учётной записи).</returns>
+    public async Task<UserProfileDto?> GetProfileAsync(Guid userId, CancellationToken ct)
+    {
+        var user = await users.FindByIdAsync(userId, ct);
+        return user is null ? null : new UserProfileDto(user.Id, user.Email, user.DisplayName);
+    }
+
     private static bool TryNormalizeEmail(string? email, out string normalized)
     {
         try

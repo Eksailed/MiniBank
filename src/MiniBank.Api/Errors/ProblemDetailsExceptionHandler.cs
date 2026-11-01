@@ -13,19 +13,23 @@ internal sealed class ProblemDetailsExceptionHandler(
             logger.LogError(exception, "Unhandled exception while processing {Method} {Path}",
                 httpContext.Request.Method, httpContext.Request.Path);
 
+        var problem = new ProblemDetails
+        {
+            Status = status,
+            // Текст внутренней ошибки наружу не отдаём.
+            Detail = status == StatusCodes.Status500InternalServerError
+                ? "An unexpected error occurred."
+                : exception.Message
+        };
+        if (ExceptionMapper.ToErrorCode(exception) is { } code)
+            problem.Extensions["code"] = code;
+
         httpContext.Response.StatusCode = status;
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = httpContext,
             Exception = exception,
-            ProblemDetails = new ProblemDetails
-            {
-                Status = status,
-                // Текст внутренней ошибки наружу не отдаём.
-                Detail = status == StatusCodes.Status500InternalServerError
-                    ? "An unexpected error occurred."
-                    : exception.Message
-            }
+            ProblemDetails = problem
         });
     }
 }

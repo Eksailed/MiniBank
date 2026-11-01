@@ -121,7 +121,6 @@ public class AuthServiceTests(PostgresFixture postgres)
         var services = new ServiceCollection().AddInfrastructure(connectionString).AddApplication();
         var realHasher = services.BuildServiceProvider().GetRequiredService<IPasswordHasher>();
         var hasher = new CountingHasher(realHasher);
-        services.AddScoped<AuthService>();
         services.AddSingleton(new AuthOptions { WebBaseUrl = "https://app.test" });
         services.AddSingleton<IEmailSender>(email);
         services.AddSingleton<IPasswordHasher>(hasher);
