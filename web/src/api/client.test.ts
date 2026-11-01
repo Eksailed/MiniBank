@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, it } from 'vitest'
+import { getToken, setToken } from '../features/auth'
 import { server } from '../test/server'
 import { api } from './client'
 import { ApiError } from './errors'
@@ -46,7 +47,7 @@ describe('api client', () => {
     expect(account.currency).toBe('RUB')
   })
 
-  it('createAccount posts owner and currency', async () => {
+  it('createAccount posts the currency only', async () => {
     let body: unknown
     server.use(
       http.post('/api/accounts', async ({ request }) => {
@@ -55,9 +56,9 @@ describe('api client', () => {
       }),
     )
 
-    const account = await api.createAccount({ owner: 'Alice', currency: 'RUB' })
+    const account = await api.createAccount({ currency: 'RUB' })
 
-    expect(body).toEqual({ owner: 'Alice', currency: 'RUB' })
+    expect(body).toEqual({ currency: 'RUB' })
     expect(account.id).toBe(ID)
   })
 
@@ -102,11 +103,105 @@ describe('api client', () => {
       }),
     )
 
-    const entries = await api.getEntries(ID, 2, 20)
+    const entries = await api.getEntries(ID, {}, 2, 20)
 
     expect(search).toBe('?page=2&pageSize=20')
     expect(entries[0].amount).toBe(-500n)
     expect(entries[0].balanceAfter).toBe(700n)
+  })
+
+  it('getEntries sends only the filters that are set', async () => {
+    let search = ''
+    server.use(
+      http.get(`/api/accounts/${ID}/entries`, ({ request }) => {
+        search = new URL(request.url).search
+        return HttpResponse.json([])
+      }),
+    )
+
+    await api.getEntries(ID, { from: '2026-10-01', to: '2026-11-01', direction: 'in' }, 1, 20)
+
+    expect(search).toBe('?from=2026-10-01&to=2026-11-01&direction=in&page=1&pageSize=20')
+  })
+
+  it('listAccounts converts every account', async () => {
+    server.use(http.get('/api/accounts', () => HttpResponse.json([accountDto, { ...accountDto, id: OTHER }])))
+
+    const accounts = await api.listAccounts()
+
+    expect(accounts.map((a) => a.id)).toEqual([ID, OTHER])
+    expect(accounts[0].balance).toBe(1245000n)
+  })
+
+  it('getLimits converts every field to bigint', async () => {
+    server.use(
+      http.get(`/api/accounts/${ID}/limits`, () =>
+        HttpResponse.json({
+          perOperation: 100,
+          daily: 500,
+          spentToday: 50,
+          remainingToday: 450,
+          maxPerOperation: 1000,
+          maxDaily: 5000,
+        }),
+      ),
+    )
+
+    expect(await api.getLimits(ID)).toEqual({
+      perOperation: 100n,
+      daily: 500n,
+      spentToday: 50n,
+      remainingToday: 450n,
+      maxPerOperation: 1000n,
+      maxDaily: 5000n,
+    })
+  })
+
+  it('putLimits sends the limits as numbers', async () => {
+    let body: unknown
+    server.use(
+      http.put(`/api/accounts/${ID}/limits`, async ({ request }) => {
+        body = await request.json()
+        return HttpResponse.json({
+          perOperation: 100,
+          daily: 500,
+          spentToday: 0,
+          remainingToday: 500,
+          maxPerOperation: 1000,
+          maxDaily: 5000,
+        })
+      }),
+    )
+
+    const limits = await api.putLimits(ID, { perOperation: 100n, daily: 500n })
+
+    expect(body).toEqual({ perOperation: 100, daily: 500 })
+    expect(limits.daily).toBe(500n)
+  })
+
+  it('downloadStatementCsv returns the body as a Blob and sends the filters', async () => {
+    let search = ''
+    server.use(
+      http.get(`/api/accounts/${ID}/entries.csv`, ({ request }) => {
+        search = new URL(request.url).search
+        return new HttpResponse('a,b\r\n', { headers: { 'Content-Type': 'text/csv' } })
+      }),
+    )
+
+    const blob = await api.downloadStatementCsv(ID, { direction: 'out' })
+
+    expect(search).toBe('?direction=out')
+    expect(await blob.text()).toBe('a,b\r\n')
+  })
+
+  it('downloadStatementCsv maps an error to ApiError and drops the token on 401', async () => {
+    server.use(http.get(`/api/accounts/${ID}/entries.csv`, () => new HttpResponse(null, { status: 401 })))
+    setToken('stale')
+
+    const err = await rejection(api.downloadStatementCsv(ID, {}))
+
+    expect((err as ApiError).status).toBe(401)
+    expect(getToken()).toBeNull()
   })
 
   it('maps a 404 problem+json response to ApiError with status and detail', async () => {

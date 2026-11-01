@@ -5,7 +5,7 @@ import type { Account } from '../../api/types'
 import { isGuid } from '../../shared/guid'
 import { moneyErrorText, parseMoney } from '../../shared/money'
 import { Button, ErrorNotice, TextField } from '../../shared/ui'
-import { AccountGate, useAccountDirectory } from '../accounts'
+import { AccountGate, useAccounts } from '../accounts'
 import { useTransfer } from './mutations'
 import { useIdempotentKey } from './useIdempotentKey'
 import styles from './forms.module.css'
@@ -19,7 +19,7 @@ function TransferForm({ account }: { account: Account }) {
   const toId = recipient.trim().toLowerCase()
   const { key, rotate } = useIdempotentKey([id, toId, amount])
   const transfer = useTransfer()
-  const { ids } = useAccountDirectory()
+  const accounts = useAccounts()
   const navigate = useNavigate()
   // Счёт-источник уже загружен, поэтому 404 при переводе — это получатель.
   const recipientNotFound = transfer.error instanceof ApiError && transfer.error.status === 404
@@ -81,11 +81,9 @@ function TransferForm({ account }: { account: Account }) {
         }}
       />
       <datalist id="my-accounts">
-        {ids
-          .filter((other) => other !== id)
-          .map((other) => (
-            <option key={other} value={other} />
-          ))}
+        {accounts.data
+          ?.filter((other) => other.id !== id)
+          .map((other) => <option key={other.id} value={other.id} />)}
       </datalist>
       <TextField
         label="Сумма"

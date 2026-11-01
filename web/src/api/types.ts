@@ -23,6 +23,16 @@ export interface Entry {
   createdAt: string
 }
 
+export interface Limits {
+  perOperation: bigint
+  daily: bigint
+  spentToday: bigint
+  remainingToday: bigint
+  /** Потолок, выше которого лимит не поднять (зависит от валюты). */
+  maxPerOperation: bigint
+  maxDaily: bigint
+}
+
 export interface UserProfile {
   id: string
   email: string
@@ -92,6 +102,17 @@ export function toTransfer(dto: Schemas['TransferDto']): Transfer {
     amount: toBigInt(dto.amount, 'amount'),
     currency: toCurrency(dto.currency),
     createdAt: required(dto.createdAt, 'createdAt'),
+  }
+}
+
+export function toLimits(dto: Schemas['LimitsDto']): Limits {
+  return {
+    perOperation: toBigInt(dto.perOperation, 'perOperation'),
+    daily: toBigInt(dto.daily, 'daily'),
+    spentToday: toBigInt(dto.spentToday, 'spentToday'),
+    remainingToday: toBigInt(dto.remainingToday, 'remainingToday'),
+    maxPerOperation: toBigInt(dto.maxPerOperation, 'maxPerOperation'),
+    maxDaily: toBigInt(dto.maxDaily, 'maxDaily'),
   }
 }
 

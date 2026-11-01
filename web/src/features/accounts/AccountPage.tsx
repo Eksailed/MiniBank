@@ -7,6 +7,7 @@ import { ActionTile, ErrorNotice } from '../../shared/ui'
 import { AccountGate } from './AccountGate'
 import { BalanceCard } from './BalanceCard'
 import { EntryRow } from './EntryRow'
+import { LimitsCard } from './LimitsCard'
 import { useEntries } from './queries'
 import styles from './AccountPage.module.css'
 
@@ -55,6 +56,7 @@ function AccountView({ account }: { account: Account }) {
         <ActionTile icon={<IconCopy size={26} stroke={1.8} />} label={copied ? 'Скопировано' : 'Реквизиты'} onClick={copyId} />
       </div>
       <RecentEntries id={id} currency={account.currency} />
+      <LimitsCard id={id} currency={account.currency} />
     </>
   )
 }

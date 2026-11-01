@@ -20,6 +20,13 @@ export function formatMoney(minor: bigint, currency: CurrencyCode): string {
   return formatterFor(currency).format(Number(minor) / 100).replace('-', '−')
 }
 
+/** Сумма для поля ввода: целые без копеек («1500»), иначе с ними («1500,50»); обратна parseMoney. */
+export function formatAmountInput(minor: bigint): string {
+  const whole = minor / 100n
+  const fraction = minor % 100n
+  return fraction === 0n ? String(whole) : `${whole},${String(fraction).padStart(2, '0')}`
+}
+
 export type ParseMoneyError = 'empty' | 'invalid' | 'too-many-decimals' | 'not-positive' | 'too-large'
 
 export type ParseMoneyResult = { ok: true; minor: bigint } | { ok: false; error: ParseMoneyError }

@@ -189,8 +189,8 @@ function recordTransfers(respond: () => Response = () => HttpResponse.json(trans
   return calls
 }
 
-async function openTransfer(directoryIds: string[] = []) {
-  if (directoryIds.length) localStorage.setItem('minibank.accounts', JSON.stringify(directoryIds))
+async function openTransfer(myAccountIds: string[] = []) {
+  server.use(http.get('/api/accounts', () => HttpResponse.json(myAccountIds.map((id) => account(id)))))
   const user = userEvent.setup()
   const app = renderApp(`/accounts/${ID}/transfer`)
   const recipient = await screen.findByLabelText('ID получателя')
@@ -292,12 +292,57 @@ describe('transfer page', () => {
     expect(await screen.findByText('Последние операции')).toBeInTheDocument()
   })
 
-  it('suggests my other accounts as recipients, without the current one', async () => {
+  it('suggests my other accounts from the server as recipients, without the current one', async () => {
     useAccountHandlers()
     await openTransfer([ID, OTHER])
 
-    const options = Array.from(document.querySelectorAll('datalist option')).map((o) => o.getAttribute('value'))
-    expect(options).toEqual([OTHER])
+    await waitFor(() => {
+      const options = Array.from(document.querySelectorAll('datalist option')).map((o) => o.getAttribute('value'))
+      expect(options).toEqual([OTHER])
+    })
+  })
+
+  it.each([
+    ['per_operation_limit_exceeded', 'Превышен лимит на одну операцию'],
+    ['daily_limit_exceeded', 'Превышен дневной лимит'],
+  ])('explains the %s limit in Russian', async (code, text) => {
+    useAccountHandlers()
+    recordTransfers(
+      () =>
+        HttpResponse.json(
+          { title: 'Problem', status: 422, detail: 'Limit 1000 exceeded.', code, limit: 1000, remaining: 0 },
+          { status: 422, headers: { 'Content-Type': 'application/problem+json' } },
+        ),
+    )
+    const { user, recipient, amount } = await openTransfer()
+
+    await user.type(recipient, OTHER)
+    await user.type(amount, '50')
+    await user.click(screen.getByRole('button', { name: 'Перевести' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(text)
+    expect(alert).not.toHaveTextContent('exceeded')
+  })
+
+  it('refreshes the list of accounts after a transfer', async () => {
+    useAccountHandlers()
+    recordTransfers()
+    let listRequests = 0
+    const { user, recipient, amount } = await openTransfer()
+    server.use(
+      http.get('/api/accounts', () => {
+        listRequests += 1
+        return HttpResponse.json([])
+      }),
+    )
+
+    await user.type(recipient, OTHER)
+    await user.type(amount, '50')
+    await user.click(screen.getByRole('button', { name: 'Перевести' }))
+
+    await screen.findByText('Последние операции')
+    await waitFor(() => expect(listRequests).toBeGreaterThan(0))
   })
 
   it('shows "Счёт не найден" when the source account does not exist', async () => {

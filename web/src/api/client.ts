@@ -5,11 +5,13 @@ import type { components } from './schema'
 import {
   toAccount,
   toEntry,
+  toLimits,
   toNumber,
   toTransfer,
   toUserProfile,
   type Account,
   type Entry,
+  type Limits,
   type Transfer,
   type UserProfile,
 } from './types'
@@ -23,6 +25,8 @@ export interface RequestInitLite {
   body?: unknown
   idempotencyKey?: string
   signal?: AbortSignal
+  /** Заголовок Accept; по умолчанию JSON. */
+  accept?: string
 }
 
 async function readProblem(response: Response): Promise<ProblemBody> {
@@ -54,11 +58,9 @@ function dropTokenOn401(path: string, status: number) {
   if (status === 401 && !isAuthPath(path)) clearToken()
 }
 
-export async function apiRequest<T>(
-  path: string,
-  init: RequestInitLite = {},
-): Promise<{ data: T; replayed: boolean }> {
-  const headers: Record<string, string> = { Accept: 'application/json', ...bearer(path) }
+/** Отправляет запрос и возвращает успешный ответ; любая ошибка — ApiError. */
+async function send(path: string, init: RequestInitLite): Promise<Response> {
+  const headers: Record<string, string> = { Accept: init.accept ?? 'application/json', ...bearer(path) }
   if (init.body !== undefined) headers['Content-Type'] = 'application/json'
   if (init.idempotencyKey) headers['Idempotency-Key'] = init.idempotencyKey
 
@@ -81,6 +83,14 @@ export async function apiRequest<T>(
     dropTokenOn401(path, response.status)
     throw new ApiError(response.status, await readProblem(response))
   }
+  return response
+}
+
+export async function apiRequest<T>(
+  path: string,
+  init: RequestInitLite = {},
+): Promise<{ data: T; replayed: boolean }> {
+  const response = await send(path, init)
 
   // 202 и 204 приходят без тела (регистрация, подтверждение email).
   if (response.status === 202 || response.status === 204) {
@@ -93,6 +103,21 @@ export async function apiRequest<T>(
   } catch {
     throw new ApiError(response.status)
   }
+}
+
+/** Фильтр выписки: from включительно, to не включительно (даты ISO 8601, без времени — UTC). */
+export interface EntriesFilter {
+  from?: string
+  to?: string
+  direction?: 'in' | 'out'
+}
+
+function filterQuery(filter: EntriesFilter): URLSearchParams {
+  const params = new URLSearchParams()
+  if (filter.from) params.set('from', filter.from)
+  if (filter.to) params.set('to', filter.to)
+  if (filter.direction) params.set('direction', filter.direction)
+  return params
 }
 
 export interface DepositInput {
@@ -131,7 +156,12 @@ export const api = {
     return toUserProfile(data)
   },
 
-  async createAccount(input: { owner: string; currency: CurrencyCode }): Promise<Account> {
+  async listAccounts(): Promise<Account[]> {
+    const { data } = await apiRequest<Schemas['AccountDto'][]>('/accounts')
+    return data.map(toAccount)
+  },
+
+  async createAccount(input: { currency: CurrencyCode }): Promise<Account> {
     const { data } = await apiRequest<Schemas['AccountDto']>('/accounts', { method: 'POST', body: input })
     return toAccount(data)
   },
@@ -164,10 +194,36 @@ export const api = {
     return { transfer: toTransfer(data), replayed }
   },
 
-  async getEntries(id: string, page: number, pageSize: number): Promise<Entry[]> {
+  async getLimits(id: string): Promise<Limits> {
+    const { data } = await apiRequest<Schemas['LimitsDto']>(`/accounts/${encodeURIComponent(id)}/limits`)
+    return toLimits(data)
+  },
+
+  async putLimits(id: string, input: { perOperation: bigint; daily: bigint }): Promise<Limits> {
+    const body = { perOperation: toNumber(input.perOperation), daily: toNumber(input.daily) }
+    const { data } = await apiRequest<Schemas['LimitsDto']>(`/accounts/${encodeURIComponent(id)}/limits`, {
+      method: 'PUT',
+      body,
+    })
+    return toLimits(data)
+  },
+
+  async getEntries(id: string, filter: EntriesFilter, page: number, pageSize: number): Promise<Entry[]> {
+    const params = filterQuery(filter)
+    params.set('page', String(page))
+    params.set('pageSize', String(pageSize))
     const { data } = await apiRequest<Schemas['EntryDto'][]>(
-      `/accounts/${encodeURIComponent(id)}/entries?page=${page}&pageSize=${pageSize}`,
+      `/accounts/${encodeURIComponent(id)}/entries?${params}`,
     )
     return data.map(toEntry)
+  },
+
+  /** Выписка целиком в CSV (запрос с токеном, поэтому не ссылка на скачивание). */
+  async downloadStatementCsv(id: string, filter: EntriesFilter): Promise<Blob> {
+    const query = filterQuery(filter).toString()
+    const response = await send(`/accounts/${encodeURIComponent(id)}/entries.csv${query ? `?${query}` : ''}`, {
+      accept: 'text/csv',
+    })
+    return response.blob()
   },
 }

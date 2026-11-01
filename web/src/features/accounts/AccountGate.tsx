@@ -1,30 +1,18 @@
 import type { ReactNode } from 'react'
-import { useNavigate } from 'react-router'
+import { Link } from 'react-router'
 import { ApiError } from '../../api/errors'
 import type { Account } from '../../api/types'
 import { isGuid } from '../../shared/guid'
-import { Button, ErrorNotice } from '../../shared/ui'
-import { useAccountDirectory } from './DirectoryProvider'
+import { ErrorNotice } from '../../shared/ui'
 import { useAccount } from './queries'
 import styles from './AccountGate.module.css'
 
-function NotFound({ id }: { id: string }) {
-  const directory = useAccountDirectory()
-  const navigate = useNavigate()
-
+function NotFound() {
   return (
     <div className={styles.notFound}>
       <h1>Счёт не найден</h1>
-      <p className={styles.muted}>Проверьте ID или уберите счёт из списка.</p>
-      <Button
-        variant="secondary"
-        onClick={() => {
-          directory.remove(id)
-          navigate('/')
-        }}
-      >
-        Убрать из списка
-      </Button>
+      <p className={styles.muted}>Проверьте ссылку: открыть можно только свой счёт.</p>
+      <Link to="/">К моим счетам</Link>
     </div>
   )
 }
@@ -34,7 +22,7 @@ export function AccountGate({ id, children }: { id: string; children: (account: 
   const account = useAccount(id)
 
   if (!isGuid(id) || (account.error instanceof ApiError && account.error.status === 404)) {
-    return <NotFound id={id} />
+    return <NotFound />
   }
   if (account.isError) return <ErrorNotice error={account.error} onRetry={() => account.refetch()} />
   if (!account.data) return <p className={styles.muted}>Загрузка…</p>

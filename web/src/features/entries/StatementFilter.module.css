@@ -1,0 +1,23 @@
+.filter {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.select {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.select label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.select select {
+  padding: 13px 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}

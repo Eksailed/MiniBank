@@ -44,6 +44,10 @@ const KNOWN_DETAILS: Array<[RegExp, string]> = [
   [/is blocked/i, 'Счёт заблокирован'],
   [/system accounts/i, 'Операции с системным счётом недоступны'],
   [/balance overflow/i, 'Сумма слишком велика для счёта'],
+  [/must be positive/i, 'Лимит должен быть больше нуля'],
+  [/less than the per-operation limit/i, 'Дневной лимит не может быть меньше лимита на операцию'],
+  [/must not exceed/i, 'Лимит больше допустимого для этой валюты'],
+  [/Statement has more than/i, 'Слишком много строк в выписке: сузьте период или выберите вид операций'],
 ]
 
 /** Ошибки с машинным кодом точнее, чем статус: тексты по-русски, без деталей бэкенда. */
@@ -51,6 +55,21 @@ const CODE_DESCRIPTIONS: Record<string, ErrorDescription> = {
   email_taken: { title: 'Этот email уже зарегистрирован', retryable: false },
   invalid_confirmation_token: { title: 'Ссылка недействительна или устарела', retryable: false },
   invalid_credentials: { title: 'Неверный email или пароль', retryable: false },
+  account_limit_reached: {
+    title: 'Достигнут максимум счетов',
+    hint: 'Новый счёт можно будет открыть, когда число счетов станет меньше',
+    retryable: false,
+  },
+  per_operation_limit_exceeded: {
+    title: 'Превышен лимит на одну операцию',
+    hint: 'Уменьшите сумму или поднимите лимит на странице счёта',
+    retryable: false,
+  },
+  daily_limit_exceeded: {
+    title: 'Превышен дневной лимит',
+    hint: 'Уменьшите сумму, дождитесь завтра или поднимите лимит на странице счёта',
+    retryable: false,
+  },
   email_not_confirmed: {
     title: 'Email не подтверждён',
     hint: 'Перейдите по ссылке из письма или запросите письмо ещё раз',
