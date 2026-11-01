@@ -135,4 +135,73 @@ public class SchemaTests(PostgresFixture postgres)
         Assert.Equal(700, loadedFrom.Balance);
         Assert.Equal(from.Version, loadedFrom.Version);
     }
+
+    [Fact]
+    public async Task Users_DuplicateEmail_ViolatesUniqueIndex()
+    {
+        var (_, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+        context.Users.Add(User.Register("a@b.c", "hash", "A", Now));
+        await context.SaveChangesAsync();
+
+        context.Users.Add(User.Register("a@b.c", "hash", "B", Now));
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+
+        var pg = Assert.IsType<PostgresException>(ex.InnerException);
+        Assert.Equal("23505", pg.SqlState);
+        Assert.Equal("ix_users_email", pg.ConstraintName);
+    }
+
+    [Fact]
+    public async Task EmailConfirmationTokens_DuplicateHash_ViolatesUniqueIndex()
+    {
+        var (_, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+        var user = User.Register("a@b.c", "hash", "A", Now);
+        context.Users.Add(user);
+        context.EmailConfirmationTokens.Add(EmailConfirmationToken.Create(user.Id, "same", Now));
+        await context.SaveChangesAsync();
+
+        context.EmailConfirmationTokens.Add(EmailConfirmationToken.Create(user.Id, "same", Now));
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+
+        var pg = Assert.IsType<PostgresException>(ex.InnerException);
+        Assert.Equal("23505", pg.SqlState);
+    }
+
+    [Fact]
+    public async Task DeletingUser_CascadesToConfirmationTokens()
+    {
+        var (connectionString, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+        var user = User.Register("a@b.c", "hash", "A", Now);
+        context.Users.Add(user);
+        context.EmailConfirmationTokens.Add(EmailConfirmationToken.Create(user.Id, "h1", Now));
+        context.EmailConfirmationTokens.Add(EmailConfirmationToken.Create(user.Id, "h2", Now));
+        await context.SaveChangesAsync();
+
+        await ExecuteAsync(connectionString, $"DELETE FROM users WHERE id = '{user.Id}'");
+
+        Assert.Equal(0, await context.EmailConfirmationTokens.CountAsync());
+    }
+
+    [Fact]
+    public async Task Users_RoundTrip_PreservesFields()
+    {
+        var (connectionString, context) = await MigratedDatabaseAsync();
+        var user = User.Register("A@b.c", "hash", " Alice ", Now);
+        user.ConfirmEmail(Now.AddMinutes(1));
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        await context.DisposeAsync();
+
+        await using var fresh = NewContext(connectionString);
+        var loaded = await fresh.Users.SingleAsync(u => u.Id == user.Id);
+
+        Assert.Equal("a@b.c", loaded.Email);
+        Assert.Equal("Alice", loaded.DisplayName);
+        Assert.Equal("hash", loaded.PasswordHash);
+        Assert.Equal(Now.AddMinutes(1), loaded.EmailConfirmedAt);
+        Assert.Equal(Now, loaded.CreatedAt);
+    }
 }

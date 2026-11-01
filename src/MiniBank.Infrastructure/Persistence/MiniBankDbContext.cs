@@ -9,6 +9,8 @@ public class MiniBankDbContext(DbContextOptions<MiniBankDbContext> options) : Db
     public DbSet<Transfer> Transfers => Set<Transfer>();
     public DbSet<LedgerEntry> LedgerEntries => Set<LedgerEntry>();
     public DbSet<IdempotencyKeyRecord> IdempotencyKeys => Set<IdempotencyKeyRecord>();
+    public DbSet<User> Users => Set<User>();
+    public DbSet<EmailConfirmationToken> EmailConfirmationTokens => Set<EmailConfirmationToken>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

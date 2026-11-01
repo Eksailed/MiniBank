@@ -105,6 +105,47 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("MiniBank.Domain.EmailConfirmationToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.Property<DateTimeOffset?>("UsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("used_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_email_confirmation_tokens");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_email_confirmation_tokens_token_hash");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_email_confirmation_tokens_user_id");
+
+                    b.ToTable("email_confirmation_tokens", (string)null);
+                });
+
             modelBuilder.Entity("MiniBank.Domain.LedgerEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -187,6 +228,48 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                     b.ToTable("transfers", (string)null);
                 });
 
+            modelBuilder.Entity("MiniBank.Domain.User", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(254)
+                        .HasColumnType("character varying(254)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTimeOffset?>("EmailConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("email_confirmed_at");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("password_hash");
+
+                    b.HasKey("Id")
+                        .HasName("pk_users");
+
+                    b.HasIndex("Email")
+                        .IsUnique()
+                        .HasDatabaseName("ix_users_email");
+
+                    b.ToTable("users", (string)null);
+                });
+
             modelBuilder.Entity("MiniBank.Infrastructure.Persistence.IdempotencyKeyRecord", b =>
                 {
                     b.Property<string>("Key")
@@ -217,6 +300,16 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                         .HasName("pk_idempotency_keys");
 
                     b.ToTable("idempotency_keys", (string)null);
+                });
+
+            modelBuilder.Entity("MiniBank.Domain.EmailConfirmationToken", b =>
+                {
+                    b.HasOne("MiniBank.Domain.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_email_confirmation_tokens_users_user_id");
                 });
 
             modelBuilder.Entity("MiniBank.Domain.LedgerEntry", b =>
