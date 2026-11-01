@@ -12,7 +12,9 @@ services:
     volumes:
       - minibank-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d minibank"]
+      # -h 127.0.0.1: при первом старте entrypoint поднимает временный сервер только на unix-сокете,
+      # без -h pg_isready отвечает «готов» раньше, чем база принимает TCP-подключения от api.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d minibank"]
       interval: 5s
       timeout: 3s
       retries: 10
