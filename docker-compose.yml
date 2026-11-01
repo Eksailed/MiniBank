@@ -1,4 +1,5 @@
-# Весь стек: PostgreSQL + API + веб за nginx. Приложение: http://localhost:8080, API и Swagger: http://localhost:5050.
+# Весь стек: PostgreSQL + API + веб за nginx + Mailpit. Приложение: http://localhost:8080, API и Swagger: http://localhost:5050,
+# письма (подтверждение email): http://localhost:8025.
 # Для разработки достаточно `docker compose up -d postgres`: API и веб запускаются локально (dotnet run, npm run dev).
 services:
   postgres:
@@ -19,6 +20,17 @@ services:
       timeout: 3s
       retries: 10
 
+  # Перехватывает исходящую почту: SMTP 1025 доступен только внутри сети Compose, веб-интерфейс — на 8025.
+  mailpit:
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   api:
     build:
       context: .
@@ -27,11 +39,23 @@ services:
       ConnectionStrings__MiniBank: "Host=postgres;Port=5432;Database=minibank;Username=postgres;Password=postgres"
       Database__MigrateOnStartup: "true"
       Swagger__Enabled: "true"
+      # Только для локального запуска: ключ подписи JWT публичен, в любой другой среде задайте свой через JWT_KEY (от 32 байт).
+      Jwt__Key: "${JWT_KEY:-local-demo-only-jwt-signing-key-change-me-0123456789}"
+      Smtp__Host: mailpit
+      Smtp__Port: "1025"
+      Smtp__UseStartTls: "false"
+      Smtp__From: "MiniBank <noreply@minibank.local>"
+      # Ссылка из письма ведёт на веб-клиент за nginx.
+      Web__BaseUrl: "http://localhost:8080"
+      # nginx приходит из сети Compose (172.16.0.0/12): только от него принимается X-Forwarded-For для лимита запросов.
+      ForwardedHeaders__TrustedNetworks__0: "172.16.0.0/12"
     ports:
       - "5050:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      mailpit:
+        condition: service_started
     restart: unless-stopped
 
   web:
