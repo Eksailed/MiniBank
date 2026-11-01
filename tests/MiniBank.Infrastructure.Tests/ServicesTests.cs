@@ -29,28 +29,36 @@ public class ServicesTests(PostgresFixture postgres)
         return await action(scope.ServiceProvider);
     }
 
-    private static Task<AccountDto> CreateAsync(ServiceProvider provider, string owner, string currency = "RUB") =>
-        InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().CreateAsync(owner, currency, default));
+    private static Task<Guid> NewUserAsync(ServiceProvider provider) =>
+        InScopeAsync(provider, async sp => (await TestData.SeedUserAsync(sp.GetRequiredService<MiniBankDbContext>())).Id);
+
+    private static Task<AccountDto> CreateAsync(ServiceProvider provider, Guid userId, string currency = "RUB") =>
+        InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().CreateAsync(userId, currency, default));
 
     private static Task<IdempotentResult<TransferDto>> DepositWithKeyAsync(
-        ServiceProvider provider, string? key, Guid id, long amount, string currency = "RUB") =>
-        InScopeAsync(provider, sp => sp.GetRequiredService<TransfersService>().DepositAsync(key, id, amount, currency, default));
+        ServiceProvider provider, Guid userId, string? key, Guid id, long amount, string currency = "RUB") =>
+        InScopeAsync(provider, sp => sp.GetRequiredService<TransfersService>().DepositAsync(userId, key, id, amount, currency, default));
 
     private static Task<IdempotentResult<TransferDto>> TransferWithKeyAsync(
-        ServiceProvider provider, string? key, Guid from, Guid to, long amount, string currency = "RUB") =>
-        InScopeAsync(provider, sp => sp.GetRequiredService<TransfersService>().TransferAsync(key, from, to, amount, currency, default));
+        ServiceProvider provider, Guid userId, string? key, Guid from, Guid to, long amount, string currency = "RUB") =>
+        InScopeAsync(provider, sp => sp.GetRequiredService<TransfersService>().TransferAsync(userId, key, from, to, amount, currency, default));
 
-    private static async Task<TransferDto> DepositAsync(ServiceProvider provider, Guid id, long amount, string currency = "RUB") =>
-        (await DepositWithKeyAsync(provider, Guid.NewGuid().ToString(), id, amount, currency)).Value;
+    private static async Task<TransferDto> DepositAsync(ServiceProvider provider, Guid userId, Guid id, long amount, string currency = "RUB") =>
+        (await DepositWithKeyAsync(provider, userId, Guid.NewGuid().ToString(), id, amount, currency)).Value;
 
-    private static async Task<TransferDto> TransferAsync(ServiceProvider provider, Guid from, Guid to, long amount, string currency = "RUB") =>
-        (await TransferWithKeyAsync(provider, Guid.NewGuid().ToString(), from, to, amount, currency)).Value;
+    private static async Task<TransferDto> TransferAsync(ServiceProvider provider, Guid userId, Guid from, Guid to, long amount, string currency = "RUB") =>
+        (await TransferWithKeyAsync(provider, userId, Guid.NewGuid().ToString(), from, to, amount, currency)).Value;
 
-    private static Task<AccountDto> GetAsync(ServiceProvider provider, Guid id) =>
-        InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().GetAsync(id, default));
+    private static Task<AccountDto> GetAsync(ServiceProvider provider, Guid userId, Guid id) =>
+        InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().GetAsync(userId, id, default));
 
-    private static Task<IReadOnlyList<EntryDto>> EntriesAsync(ServiceProvider provider, Guid id, int page = 1, int pageSize = 50) =>
-        InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().GetEntriesAsync(id, page, pageSize, default));
+    private static Task<IReadOnlyList<EntryDto>> EntriesAsync(
+        ServiceProvider provider, Guid userId, Guid id, int page = 1, int pageSize = 50) =>
+        InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().GetEntriesAsync(userId, id, page, pageSize, default));
+
+    private static Task<long> CashBalanceAsync(ServiceProvider provider, string currency = "RUB") =>
+        InScopeAsync(provider, sp => sp.GetRequiredService<MiniBankDbContext>().Accounts
+            .Where(a => a.Id == SystemAccounts.CashId(currency)).Select(a => a.Balance).SingleAsync());
 
     private static Task<(long Sum, int Entries)> TotalsAsync(ServiceProvider provider) =>
         InScopeAsync(provider, async sp =>
@@ -64,7 +72,8 @@ public class ServicesTests(PostgresFixture postgres)
     {
         await using var provider = await MigratedProviderAsync();
 
-        var account = await CreateAsync(provider, "Alice", "rub");
+        var aliceUser = await NewUserAsync(provider);
+        var account = await CreateAsync(provider, aliceUser, "rub");
 
         Assert.Equal(0, account.Balance);
         Assert.Equal("RUB", account.Currency);
@@ -73,50 +82,76 @@ public class ServicesTests(PostgresFixture postgres)
     }
 
     [Theory]
-    [InlineData("Alice", "JPY")]
-    [InlineData("", "RUB")]
-    public async Task Create_UnsupportedCurrencyOrEmptyOwner_Throws(string owner, string currency)
+    [InlineData("JPY")]
+    [InlineData("")]
+    public async Task Create_UnsupportedCurrency_Throws(string currency)
+    {
+        await using var provider = await MigratedProviderAsync();
+        var aliceUser = await NewUserAsync(provider);
+
+        await Assert.ThrowsAsync<DomainValidationException>(() => CreateAsync(provider, aliceUser, currency));
+    }
+
+    [Fact]
+    public async Task Create_TakesOwnerFromUserDisplayName_AndLinksAccountToUser()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var aliceUser = await NewUserAsync(provider);
+
+        var account = await CreateAsync(provider, aliceUser);
+
+        Assert.Equal("Alice", account.Owner);
+        var listed = await InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().ListAsync(aliceUser, default));
+        Assert.Equal(account.Id, Assert.Single(listed).Id);
+    }
+
+    [Fact]
+    public async Task Create_ForUnknownUser_ThrowsInvalidCredentials()
     {
         await using var provider = await MigratedProviderAsync();
 
-        await Assert.ThrowsAsync<DomainValidationException>(() => CreateAsync(provider, owner, currency));
+        await Assert.ThrowsAsync<InvalidCredentialsException>(() => CreateAsync(provider, Guid.NewGuid()));
     }
 
     [Fact]
     public async Task Get_Unknown_ThrowsNotFound()
     {
         await using var provider = await MigratedProviderAsync();
+        var aliceUser = await NewUserAsync(provider);
 
-        await Assert.ThrowsAsync<AccountNotFoundException>(() => GetAsync(provider, Guid.NewGuid()));
+        await Assert.ThrowsAsync<AccountNotFoundException>(() => GetAsync(provider, aliceUser, Guid.NewGuid()));
     }
 
     [Fact]
     public async Task Deposit_MovesMoneyFromCash()
     {
         await using var provider = await MigratedProviderAsync();
-        var account = await CreateAsync(provider, "Alice");
+        var aliceUser = await NewUserAsync(provider);
+        var account = await CreateAsync(provider, aliceUser);
 
-        await DepositAsync(provider, account.Id, 1000);
+        await DepositAsync(provider, aliceUser, account.Id, 1000);
 
-        Assert.Equal(1000, (await GetAsync(provider, account.Id)).Balance);
-        Assert.Equal(-1000, (await GetAsync(provider, SystemAccounts.CashId("RUB"))).Balance);
+        Assert.Equal(1000, (await GetAsync(provider, aliceUser, account.Id)).Balance);
+        Assert.Equal(-1000, await CashBalanceAsync(provider));
     }
 
     [Fact]
     public async Task Deposit_UnknownAccount_ThrowsNotFound()
     {
         await using var provider = await MigratedProviderAsync();
+        var aliceUser = await NewUserAsync(provider);
 
-        await Assert.ThrowsAsync<AccountNotFoundException>(() => DepositAsync(provider, Guid.NewGuid(), 100));
+        await Assert.ThrowsAsync<AccountNotFoundException>(() => DepositAsync(provider, aliceUser, Guid.NewGuid(), 100));
     }
 
     [Fact]
     public async Task Deposit_CurrencyMismatch_Throws()
     {
         await using var provider = await MigratedProviderAsync();
-        var account = await CreateAsync(provider, "Alice");
+        var aliceUser = await NewUserAsync(provider);
+        var account = await CreateAsync(provider, aliceUser);
 
-        await Assert.ThrowsAsync<DomainValidationException>(() => DepositAsync(provider, account.Id, 100, "USD"));
+        await Assert.ThrowsAsync<DomainValidationException>(() => DepositAsync(provider, aliceUser, account.Id, 100, "USD"));
         Assert.Equal((0, 0), await TotalsAsync(provider));
     }
 
@@ -124,16 +159,18 @@ public class ServicesTests(PostgresFixture postgres)
     public async Task Transfer_HappyPath()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
-        await DepositAsync(provider, alice.Id, 1000);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 1000);
 
-        var transfer = await TransferAsync(provider, alice.Id, bob.Id, 300);
+        var transfer = await TransferAsync(provider, aliceUser, alice.Id, bob.Id, 300);
 
-        Assert.Equal(700, (await GetAsync(provider, alice.Id)).Balance);
-        Assert.Equal(300, (await GetAsync(provider, bob.Id)).Balance);
-        var aliceEntry = (await EntriesAsync(provider, alice.Id)).Single(e => e.TransferId == transfer.Id);
-        var bobEntry = Assert.Single(await EntriesAsync(provider, bob.Id));
+        Assert.Equal(700, (await GetAsync(provider, aliceUser, alice.Id)).Balance);
+        Assert.Equal(300, (await GetAsync(provider, bobUser, bob.Id)).Balance);
+        var aliceEntry = (await EntriesAsync(provider, aliceUser, alice.Id)).Single(e => e.TransferId == transfer.Id);
+        var bobEntry = Assert.Single(await EntriesAsync(provider, bobUser, bob.Id));
         Assert.Equal(-300, aliceEntry.Amount);
         Assert.Equal(700, aliceEntry.BalanceAfter);
         Assert.Equal(300, bobEntry.Amount);
@@ -145,15 +182,17 @@ public class ServicesTests(PostgresFixture postgres)
     public async Task Transfer_InsufficientFunds_PersistsNothing()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
-        await DepositAsync(provider, alice.Id, 100);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 100);
         var before = await TotalsAsync(provider);
 
-        await Assert.ThrowsAsync<InsufficientFundsException>(() => TransferAsync(provider, alice.Id, bob.Id, 101));
+        await Assert.ThrowsAsync<InsufficientFundsException>(() => TransferAsync(provider, aliceUser, alice.Id, bob.Id, 101));
 
-        Assert.Equal(100, (await GetAsync(provider, alice.Id)).Balance);
-        Assert.Equal(0, (await GetAsync(provider, bob.Id)).Balance);
+        Assert.Equal(100, (await GetAsync(provider, aliceUser, alice.Id)).Balance);
+        Assert.Equal(0, (await GetAsync(provider, bobUser, bob.Id)).Balance);
         Assert.Equal(before, await TotalsAsync(provider));
     }
 
@@ -161,19 +200,22 @@ public class ServicesTests(PostgresFixture postgres)
     public async Task Transfer_ToSameAccount_Throws()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        await DepositAsync(provider, alice.Id, 100);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 100);
 
-        await Assert.ThrowsAsync<DomainValidationException>(() => TransferAsync(provider, alice.Id, alice.Id, 10));
+        await Assert.ThrowsAsync<DomainValidationException>(() => TransferAsync(provider, aliceUser, alice.Id, alice.Id, 10));
     }
 
     [Fact]
     public async Task Transfer_BlockedAccount_Throws()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
-        await DepositAsync(provider, alice.Id, 100);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 100);
         await InScopeAsync(provider, async sp =>
         {
             var db = sp.GetRequiredService<MiniBankDbContext>();
@@ -182,24 +224,26 @@ public class ServicesTests(PostgresFixture postgres)
             return 0;
         });
 
-        await Assert.ThrowsAsync<AccountBlockedException>(() => TransferAsync(provider, alice.Id, bob.Id, 10));
-        Assert.Equal(100, (await GetAsync(provider, alice.Id)).Balance);
+        await Assert.ThrowsAsync<AccountBlockedException>(() => TransferAsync(provider, aliceUser, alice.Id, bob.Id, 10));
+        Assert.Equal(100, (await GetAsync(provider, aliceUser, alice.Id)).Balance);
     }
 
     [Fact]
     public async Task Transfer_WithCashAsSourceOrTarget_Throws()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        await DepositAsync(provider, alice.Id, 100);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 100);
         var cash = SystemAccounts.CashId("RUB");
         var before = await TotalsAsync(provider);
 
-        await Assert.ThrowsAsync<TransferNotAllowedException>(() => TransferAsync(provider, cash, alice.Id, 10));
-        await Assert.ThrowsAsync<TransferNotAllowedException>(() => TransferAsync(provider, alice.Id, cash, 10));
+        // Касса не принадлежит пользователю: как источник она неотличима от несуществующего счёта.
+        await Assert.ThrowsAsync<AccountNotFoundException>(() => TransferAsync(provider, aliceUser, cash, alice.Id, 10));
+        await Assert.ThrowsAsync<TransferNotAllowedException>(() => TransferAsync(provider, aliceUser, alice.Id, cash, 10));
 
-        Assert.Equal(100, (await GetAsync(provider, alice.Id)).Balance);
-        Assert.Equal(-100, (await GetAsync(provider, cash)).Balance);
+        Assert.Equal(100, (await GetAsync(provider, aliceUser, alice.Id)).Balance);
+        Assert.Equal(-100, await CashBalanceAsync(provider));
         Assert.Equal(before, await TotalsAsync(provider));
     }
 
@@ -207,11 +251,12 @@ public class ServicesTests(PostgresFixture postgres)
     public async Task Transfer_UnknownAccount_ThrowsNotFound()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        await DepositAsync(provider, alice.Id, 100);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 100);
 
-        await Assert.ThrowsAsync<AccountNotFoundException>(() => TransferAsync(provider, alice.Id, Guid.NewGuid(), 10));
-        await Assert.ThrowsAsync<AccountNotFoundException>(() => TransferAsync(provider, Guid.NewGuid(), alice.Id, 10));
+        await Assert.ThrowsAsync<AccountNotFoundException>(() => TransferAsync(provider, aliceUser, alice.Id, Guid.NewGuid(), 10));
+        await Assert.ThrowsAsync<AccountNotFoundException>(() => TransferAsync(provider, aliceUser, Guid.NewGuid(), alice.Id, 10));
     }
 
     [Theory]
@@ -221,26 +266,30 @@ public class ServicesTests(PostgresFixture postgres)
     public async Task GetEntries_InvalidPaging_Throws(int page, int pageSize)
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
 
-        await Assert.ThrowsAsync<DomainValidationException>(() => EntriesAsync(provider, alice.Id, page, pageSize));
+        await Assert.ThrowsAsync<DomainValidationException>(() => EntriesAsync(provider, aliceUser, alice.Id, page, pageSize));
     }
 
     [Fact]
     public async Task GetEntries_ReturnsEntriesOfAccount()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
-        var carol = await CreateAsync(provider, "Carol");
-        await DepositAsync(provider, alice.Id, 1000);
-        await TransferAsync(provider, alice.Id, bob.Id, 100);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
+        var carolUser = await NewUserAsync(provider);
+        var carol = await CreateAsync(provider, carolUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 1000);
+        await TransferAsync(provider, aliceUser, alice.Id, bob.Id, 100);
 
-        var aliceEntries = await EntriesAsync(provider, alice.Id);
+        var aliceEntries = await EntriesAsync(provider, aliceUser, alice.Id);
 
         Assert.Equal(2, aliceEntries.Count);
-        Assert.Empty(await EntriesAsync(provider, carol.Id));
-        await Assert.ThrowsAsync<AccountNotFoundException>(() => EntriesAsync(provider, Guid.NewGuid()));
+        Assert.Empty(await EntriesAsync(provider, carolUser, carol.Id));
+        await Assert.ThrowsAsync<AccountNotFoundException>(() => EntriesAsync(provider, aliceUser, Guid.NewGuid()));
     }
 
     private static Task<(int Transfers, int Keys)> CountsAsync(ServiceProvider provider) =>
@@ -254,57 +303,65 @@ public class ServicesTests(PostgresFixture postgres)
     public async Task Transfer_SameKeyTwice_ReturnsSameResultAndMovesMoneyOnce()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
-        await DepositAsync(provider, alice.Id, 1000);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 1000);
 
-        var first = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 300);
-        var second = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 300);
+        var first = await TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 300);
+        var second = await TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 300);
 
         Assert.False(first.Replayed);
         Assert.True(second.Replayed);
         Assert.Equal(first.Value, second.Value);
-        Assert.Equal(700, (await GetAsync(provider, alice.Id)).Balance);
-        Assert.Equal(300, (await GetAsync(provider, bob.Id)).Balance);
-        Assert.Equal(2, (await EntriesAsync(provider, bob.Id)).Count + 1);
+        Assert.Equal(700, (await GetAsync(provider, aliceUser, alice.Id)).Balance);
+        Assert.Equal(300, (await GetAsync(provider, bobUser, bob.Id)).Balance);
+        Assert.Equal(2, (await EntriesAsync(provider, bobUser, bob.Id)).Count + 1);
     }
 
     [Fact]
     public async Task Transfer_SameKeyDifferentAmount_ThrowsKeyReuse()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
-        await DepositAsync(provider, alice.Id, 1000);
-        await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 300);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 1000);
+        await TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 300);
 
         await Assert.ThrowsAsync<IdempotencyKeyReuseException>(() =>
-            TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 301));
-        Assert.Equal(300, (await GetAsync(provider, bob.Id)).Balance);
+            TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 301));
+        Assert.Equal(300, (await GetAsync(provider, bobUser, bob.Id)).Balance);
     }
 
     [Fact]
     public async Task Deposit_AndTransferWithSameKey_ThrowsKeyReuse()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
-        await DepositWithKeyAsync(provider, "key-1", alice.Id, 500);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
+        await DepositWithKeyAsync(provider, aliceUser, "key-1", alice.Id, 500);
 
         await Assert.ThrowsAsync<IdempotencyKeyReuseException>(() =>
-            TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 500));
+            TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 500));
     }
 
     [Fact]
     public async Task Transfer_LowercaseCurrencyIsSameRequest()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
-        await DepositAsync(provider, alice.Id, 1000);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 1000);
 
-        var first = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100, "RUB");
-        var second = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100, "rub");
+        var first = await TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 100, "RUB");
+        var second = await TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 100, "rub");
 
         Assert.True(second.Replayed);
         Assert.Equal(first.Value, second.Value);
@@ -314,45 +371,51 @@ public class ServicesTests(PostgresFixture postgres)
     public async Task Transfer_FailedByBusinessRule_DoesNotHoldKey()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
 
         await Assert.ThrowsAsync<InsufficientFundsException>(() =>
-            TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100));
-        await DepositAsync(provider, alice.Id, 500);
-        var retry = await TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100);
+            TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 100));
+        await DepositAsync(provider, aliceUser, alice.Id, 500);
+        var retry = await TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 100);
 
         Assert.False(retry.Replayed);
-        Assert.Equal(100, (await GetAsync(provider, bob.Id)).Balance);
+        Assert.Equal(100, (await GetAsync(provider, bobUser, bob.Id)).Balance);
     }
 
     [Fact]
     public async Task Transfer_ParallelSameKey_CreatesExactlyOneTransfer()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
-        await DepositAsync(provider, alice.Id, 1000);
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
+        await DepositAsync(provider, aliceUser, alice.Id, 1000);
 
         var results = await Task.WhenAll(Enumerable.Range(0, 20)
-            .Select(_ => TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100)));
+            .Select(_ => TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 100)));
 
         Assert.Single(results.Select(r => r.Value).Distinct());
         Assert.Equal(1, results.Count(r => !r.Replayed));
         Assert.Equal(2, (await CountsAsync(provider)).Transfers);
-        Assert.Equal(100, (await GetAsync(provider, bob.Id)).Balance);
+        Assert.Equal(100, (await GetAsync(provider, bobUser, bob.Id)).Balance);
     }
 
     [Fact]
     public async Task Transfer_ParallelSameKeyBothFail_BothThrowInsufficientFunds()
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
 
         var attempts = Enumerable.Range(0, 2)
             .Select(_ => Assert.ThrowsAsync<InsufficientFundsException>(() =>
-                TransferWithKeyAsync(provider, "key-1", alice.Id, bob.Id, 100)));
+                TransferWithKeyAsync(provider, aliceUser, "key-1", alice.Id, bob.Id, 100)));
         await Task.WhenAll(attempts);
 
         Assert.Equal((0, 0), await CountsAsync(provider));
@@ -372,11 +435,13 @@ public class ServicesTests(PostgresFixture postgres)
     public async Task Key_Invalid_ThrowsValidation(string? key)
     {
         await using var provider = await MigratedProviderAsync();
-        var alice = await CreateAsync(provider, "Alice");
-        var bob = await CreateAsync(provider, "Bob");
+        var aliceUser = await NewUserAsync(provider);
+        var alice = await CreateAsync(provider, aliceUser);
+        var bobUser = await NewUserAsync(provider);
+        var bob = await CreateAsync(provider, bobUser);
 
-        await Assert.ThrowsAsync<DomainValidationException>(() => DepositWithKeyAsync(provider, key, alice.Id, 100));
-        await Assert.ThrowsAsync<DomainValidationException>(() => TransferWithKeyAsync(provider, key, alice.Id, bob.Id, 100));
-        Assert.Equal(0, (await GetAsync(provider, alice.Id)).Balance);
+        await Assert.ThrowsAsync<DomainValidationException>(() => DepositWithKeyAsync(provider, aliceUser, key, alice.Id, 100));
+        await Assert.ThrowsAsync<DomainValidationException>(() => TransferWithKeyAsync(provider, aliceUser, key, alice.Id, bob.Id, 100));
+        Assert.Equal(0, (await GetAsync(provider, aliceUser, alice.Id)).Balance);
     }
 }

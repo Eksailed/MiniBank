@@ -9,9 +9,9 @@ namespace MiniBank.Api.IntegrationTests;
 [Collection("postgres")]
 public class TransfersEndpointsTests(PostgresFixture postgres)
 {
-    private static async Task<AccountDto> CreateAccountAsync(HttpClient client, string owner, string currency = "RUB")
+    private static async Task<AccountDto> CreateAccountAsync(HttpClient client, string currency = "RUB")
     {
-        var response = await client.PostAsJsonAsync("/accounts", new { owner, currency });
+        var response = await client.PostAsJsonAsync("/accounts", new { currency });
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<AccountDto>())!;
     }
@@ -30,8 +30,8 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Deposit_Returns200AndIncreasesBalance()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var account = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var account = await CreateAccountAsync(client);
 
         var response = await DepositAsync(client, account.Id, 1000);
 
@@ -46,7 +46,7 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Deposit_UnknownAccount_Returns404()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
         var response = await DepositAsync(client, Guid.NewGuid(), 100);
 
@@ -59,8 +59,8 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Deposit_NonPositiveAmount_Returns400(long amount)
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var account = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var account = await CreateAccountAsync(client);
 
         var response = await DepositAsync(client, account.Id, amount);
 
@@ -72,9 +72,9 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_Returns200AndMovesMoney()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var a = await CreateAccountAsync(client, "Alice");
-        var b = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var a = await CreateAccountAsync(client);
+        var b = await CreateAccountAsync(client);
         await DepositAsync(client, a.Id, 1000);
 
         var response = await TransferAsync(client, a.Id, b.Id, 300);
@@ -88,9 +88,9 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_InsufficientFunds_Returns422()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var a = await CreateAccountAsync(client, "Alice");
-        var b = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var a = await CreateAccountAsync(client);
+        var b = await CreateAccountAsync(client);
         await DepositAsync(client, a.Id, 100);
 
         var response = await TransferAsync(client, a.Id, b.Id, 101);
@@ -103,8 +103,8 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_ToSameAccount_Returns400()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var a = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var a = await CreateAccountAsync(client);
         await DepositAsync(client, a.Id, 100);
 
         var response = await TransferAsync(client, a.Id, a.Id, 10);
@@ -116,9 +116,9 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_CurrencyMismatch_Returns400()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var rub = await CreateAccountAsync(client, "Alice", "RUB");
-        var usd = await CreateAccountAsync(client, "Bob", "USD");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var rub = await CreateAccountAsync(client, "RUB");
+        var usd = await CreateAccountAsync(client, "USD");
         await DepositAsync(client, rub.Id, 100);
 
         var response = await TransferAsync(client, rub.Id, usd.Id, 10);
@@ -131,8 +131,8 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_UnknownAccount_Returns404()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var a = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var a = await CreateAccountAsync(client);
         await DepositAsync(client, a.Id, 100);
 
         var response = await TransferAsync(client, a.Id, Guid.NewGuid(), 10);
@@ -149,7 +149,7 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_MissingFieldsOrBrokenBody_Returns400(string body)
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
         var response = await client.PostRawWithKeyAsync("/transfers", body);
 
@@ -162,8 +162,8 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Deposit_MissingFieldsOrBrokenBody_Returns400(string body)
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var account = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var account = await CreateAccountAsync(client);
 
         var response = await client.PostRawWithKeyAsync($"/accounts/{account.Id}/deposit", body);
 
@@ -174,27 +174,28 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_WithCashAccount_Returns422()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var a = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var a = await CreateAccountAsync(client);
         await DepositAsync(client, a.Id, 100);
         var cash = SystemAccounts.CashId("RUB");
 
         var fromCash = await TransferAsync(client, cash, a.Id, 10);
         var toCash = await TransferAsync(client, a.Id, cash, 10);
 
-        Assert.Equal(HttpStatusCode.UnprocessableEntity, fromCash.StatusCode);
+        // Чужой для пользователя счёт — касса — неотличим от несуществующего; на кассу перевод запрещён доменом.
+        Assert.Equal(HttpStatusCode.NotFound, fromCash.StatusCode);
         Assert.Equal(HttpStatusCode.UnprocessableEntity, toCash.StatusCode);
         Assert.Equal(100, await BalanceAsync(client, a.Id));
-        Assert.Equal(-100, await BalanceAsync(client, cash));
+        Assert.Equal(-100, await Database.CashBalanceAsync(factory.ConnectionString));
     }
 
     [Fact]
     public async Task Transfer_HugeAmount_Returns400Not500()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var sender = await CreateAccountAsync(client, "Alice");
-        var receiver = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var sender = await CreateAccountAsync(client);
+        var receiver = await CreateAccountAsync(client);
         await DepositAsync(client, sender.Id, 2);
         await DepositAsync(client, receiver.Id, long.MaxValue - 1);
 
@@ -209,9 +210,9 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Entries_ReturnsHistoryNewestFirst()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var a = await CreateAccountAsync(client, "Alice");
-        var b = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var a = await CreateAccountAsync(client);
+        var b = await CreateAccountAsync(client);
         await DepositAsync(client, a.Id, 1000);
         var transfer = await (await TransferAsync(client, a.Id, b.Id, 300)).Content.ReadFromJsonAsync<TransferDto>();
 
@@ -228,8 +229,8 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Entries_DefaultsAndBounds()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var a = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var a = await CreateAccountAsync(client);
 
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"/accounts/{a.Id}/entries")).StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await client.GetAsync($"/accounts/{a.Id}/entries?page=0")).StatusCode);
@@ -242,7 +243,7 @@ public class TransfersEndpointsTests(PostgresFixture postgres)
     public async Task Entries_UnknownAccount_Returns404()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
         var response = await client.GetAsync($"/accounts/{Guid.NewGuid()}/entries");
 

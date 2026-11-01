@@ -11,9 +11,9 @@ namespace MiniBank.Api.IntegrationTests;
 [Collection("postgres")]
 public class InvariantsTests(PostgresFixture postgres)
 {
-    private static async Task<AccountDto> CreateAccountAsync(HttpClient client, string owner)
+    private static async Task<AccountDto> CreateAccountAsync(HttpClient client)
     {
-        var response = await client.PostAsJsonAsync("/accounts", new { owner, currency = "RUB" });
+        var response = await client.PostAsJsonAsync("/accounts", new { currency = "RUB" });
         return (await response.Content.ReadFromJsonAsync<AccountDto>())!;
     }
 
@@ -21,9 +21,9 @@ public class InvariantsTests(PostgresFixture postgres)
     {
         var accounts = new[]
         {
-            await CreateAccountAsync(client, "Alice"),
-            await CreateAccountAsync(client, "Bob"),
-            await CreateAccountAsync(client, "Carol")
+            await CreateAccountAsync(client),
+            await CreateAccountAsync(client),
+            await CreateAccountAsync(client)
         };
         foreach (var account in accounts)
             (await client.PostWithKeyAsync($"/accounts/{account.Id}/deposit", new { amount = 500, currency = "RUB" }))
@@ -73,7 +73,7 @@ public class InvariantsTests(PostgresFixture postgres)
     public async Task AfterSeriesOfOperations_TotalOfAllBalancesIsZero()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
         await RunSeriesOfOperationsAsync(client);
 
         var rows = await QueryAsync(factory.ConnectionString, "SELECT COALESCE(SUM(balance), 0) FROM accounts", 1);
@@ -85,7 +85,7 @@ public class InvariantsTests(PostgresFixture postgres)
     public async Task AfterSeriesOfOperations_BalanceEqualsSumOfEntries()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
         await RunSeriesOfOperationsAsync(client);
 
         var rows = await QueryAsync(factory.ConnectionString, """
@@ -102,7 +102,7 @@ public class InvariantsTests(PostgresFixture postgres)
     public async Task EveryTransferHasExactlyTwoEntriesSummingToZero()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
         await RunSeriesOfOperationsAsync(client);
 
         var rows = await QueryAsync(factory.ConnectionString, """
@@ -123,11 +123,11 @@ public class InvariantsTests(PostgresFixture postgres)
     public async Task ConcurrentStorm_KeepsAllInvariants()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
         var accounts = new List<AccountDto>();
         for (var i = 0; i < 5; i++)
         {
-            var account = await CreateAccountAsync(client, $"owner{i}");
+            var account = await CreateAccountAsync(client);
             (await client.PostWithKeyAsync($"/accounts/{account.Id}/deposit", new { amount = 10000, currency = "RUB" }))
                 .EnsureSuccessStatusCode();
             accounts.Add(account);
@@ -182,7 +182,7 @@ public class InvariantsTests(PostgresFixture postgres)
     public async Task Swagger_ListsAllFiveEndpoints()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
         using var document = JsonDocument.Parse(await client.GetStringAsync("/swagger/v1/swagger.json"));
         var paths = document.RootElement.GetProperty("paths").EnumerateObject().Select(p => p.Name).ToList();

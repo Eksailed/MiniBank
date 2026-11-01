@@ -18,5 +18,19 @@ internal sealed class AccountRepository(MiniBankDbContext db) : IAccountReposito
         return accounts.ToDictionary(a => a.Id);
     }
 
+    public async Task<IReadOnlyList<Account>> ListByUserAsync(Guid userId, CancellationToken ct) =>
+        await db.Accounts
+            .AsNoTracking()
+            .Where(a => a.UserId == userId)
+            .OrderBy(a => a.CreatedAt)
+            .ThenBy(a => a.Id)
+            .ToListAsync(ct);
+
+    public Task<int> CountByUserAsync(Guid userId, CancellationToken ct) =>
+        db.Accounts.CountAsync(a => a.UserId == userId, ct);
+
+    public Task<bool> IsOwnedByAsync(Guid accountId, Guid userId, CancellationToken ct) =>
+        db.Accounts.AsNoTracking().AnyAsync(a => a.Id == accountId && a.UserId == userId, ct);
+
     public void Add(Account account) => db.Accounts.Add(account);
 }

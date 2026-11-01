@@ -35,7 +35,7 @@ public class HealthAndSwaggerTests(PostgresFixture postgres)
     public async Task Swagger_InProductionWithoutFlag_Returns404()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres, "Production");
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
         var response = await client.GetAsync(SwaggerJson);
 

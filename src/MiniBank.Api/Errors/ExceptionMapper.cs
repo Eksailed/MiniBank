@@ -11,7 +11,7 @@ public static class ExceptionMapper
         InvalidCredentialsException => StatusCodes.Status401Unauthorized,
         EmailNotConfirmedException => StatusCodes.Status403Forbidden,
         InsufficientFundsException or AccountBlockedException or TransferNotAllowedException
-            or IdempotencyKeyReuseException
+            or IdempotencyKeyReuseException or AccountLimitReachedException
             => StatusCodes.Status422UnprocessableEntity,
         AccountNotFoundException => StatusCodes.Status404NotFound,
         ConcurrencyConflictException or EmailTakenException => StatusCodes.Status409Conflict,
@@ -21,6 +21,7 @@ public static class ExceptionMapper
     /// <summary>Машинный код ошибки для поля <c>code</c> в <c>ProblemDetails</c>; <c>null</c>, если у ошибки нет отдельного кода.</summary>
     public static string? ToErrorCode(Exception ex) => ex switch
     {
+        AccountLimitReachedException => "account_limit_reached",
         EmailTakenException => "email_taken",
         InvalidConfirmationTokenException => "invalid_confirmation_token",
         InvalidCredentialsException => "invalid_credentials",

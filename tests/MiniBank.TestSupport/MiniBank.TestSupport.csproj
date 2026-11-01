@@ -9,6 +9,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MiniBank.Application\MiniBank.Application.csproj" />
+    <ProjectReference Include="..\..\src\MiniBank.Domain\MiniBank.Domain.csproj" />
+    <ProjectReference Include="..\..\src\MiniBank.Infrastructure\MiniBank.Infrastructure.csproj" />
   </ItemGroup>
 
   <ItemGroup>

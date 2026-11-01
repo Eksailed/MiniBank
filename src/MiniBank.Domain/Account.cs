@@ -17,9 +17,12 @@ public sealed class Account
     public int Version { get; private set; }
     public AccountStatus Status { get; private set; }
     public bool IsSystem { get; private set; }
+
+    /// <summary>Владелец счёта; <c>null</c> у кассы и у счетов, открытых до появления пользователей.</summary>
+    public Guid? UserId { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
-    public static Account Open(string? owner, string? currency, DateTimeOffset now, bool isSystem = false, Guid? id = null)
+    public static Account Open(string? owner, string? currency, DateTimeOffset now, bool isSystem = false, Guid? id = null, Guid? userId = null)
     {
         if (string.IsNullOrWhiteSpace(owner))
             throw new DomainValidationException("Owner must not be empty.");
@@ -37,6 +40,7 @@ public sealed class Account
             Version = 0,
             Status = AccountStatus.Active,
             IsSystem = isSystem,
+            UserId = userId,
             CreatedAt = now
         };
     }

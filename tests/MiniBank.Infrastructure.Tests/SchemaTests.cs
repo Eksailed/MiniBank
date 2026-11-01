@@ -64,6 +64,19 @@ public class SchemaTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Database_RejectsNewUserlessNonSystemAccount()
+    {
+        var (connectionString, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(connectionString,
+            "INSERT INTO accounts (id, owner, currency, balance, version, status, is_system, created_at) " +
+            $"VALUES ('{Guid.NewGuid()}', 'x', 'RUB', 0, 0, 0, false, now())"));
+
+        Assert.Equal("ck_accounts_owner_required", ex.ConstraintName);
+    }
+
+    [Fact]
     public async Task CheckConstraint_AllowsNegativeBalanceForSystemAccount()
     {
         var (connectionString, context) = await MigratedDatabaseAsync();
@@ -80,8 +93,9 @@ public class SchemaTests(PostgresFixture postgres)
     {
         var (connectionString, context) = await MigratedDatabaseAsync();
         await using var _ = context;
-        var from = Account.Open("a", "RUB", Now);
-        var to = Account.Open("b", "RUB", Now);
+        var user = await TestData.SeedUserAsync(context);
+        var from = TestData.OpenFor(user.Id);
+        var to = TestData.OpenFor(user.Id);
         from.Credit(Guid.NewGuid(), Money.Of(100, "RUB"), Now);
         context.Accounts.AddRange(from, to);
         context.Transfers.Add(Transfer.Execute(from, to, Money.Of(10, "RUB"), Now));
@@ -98,8 +112,9 @@ public class SchemaTests(PostgresFixture postgres)
     {
         var (connectionString, context) = await MigratedDatabaseAsync();
         await using var _ = context;
-        var from = Account.Open("a", "RUB", Now);
-        var to = Account.Open("b", "RUB", Now);
+        var user = await TestData.SeedUserAsync(context);
+        var from = TestData.OpenFor(user.Id);
+        var to = TestData.OpenFor(user.Id);
         from.Credit(Guid.NewGuid(), Money.Of(100, "RUB"), Now);
         context.Accounts.AddRange(from, to);
         context.Transfers.Add(Transfer.Execute(from, to, Money.Of(10, "RUB"), Now));
@@ -116,8 +131,9 @@ public class SchemaTests(PostgresFixture postgres)
     public async Task RoundTrip_SavesTransferWithEntries()
     {
         var (connectionString, context) = await MigratedDatabaseAsync();
-        var from = Account.Open("a", "RUB", Now);
-        var to = Account.Open("b", "RUB", Now);
+        var user = await TestData.SeedUserAsync(context);
+        var from = TestData.OpenFor(user.Id);
+        var to = TestData.OpenFor(user.Id);
         from.Credit(Guid.NewGuid(), Money.Of(1000, "RUB"), Now);
         context.Accounts.AddRange(from, to);
         var transfer = Transfer.Execute(from, to, Money.Of(300, "RUB"), Now);

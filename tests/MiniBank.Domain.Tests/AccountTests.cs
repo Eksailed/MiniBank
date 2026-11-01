@@ -23,6 +23,15 @@ public class AccountTests
     }
 
     [Fact]
+    public void Open_RemembersUserId_AndDefaultsToNone()
+    {
+        var userId = Guid.NewGuid();
+
+        Assert.Equal(userId, Account.Open("owner", "RUB", Now, userId: userId).UserId);
+        Assert.Null(Account.Open("owner", "RUB", Now).UserId);
+    }
+
+    [Fact]
     public void Open_RejectsOwnerLongerThanLimit()
     {
         Assert.Throws<DomainValidationException>(() => Account.Open(new string('x', Account.MaxOwnerLength + 1), "RUB", Now));

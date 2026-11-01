@@ -23,11 +23,18 @@ public class RepositoryTests(PostgresFixture postgres)
         return provider;
     }
 
+    private static async Task<Guid> SeedUserAsync(ServiceProvider provider)
+    {
+        await using var scope = provider.CreateAsyncScope();
+        return (await TestData.SeedUserAsync(scope.ServiceProvider.GetRequiredService<MiniBankDbContext>())).Id;
+    }
+
     [Fact]
     public async Task Add_ThenFind_ReturnsAccount()
     {
         await using var provider = await MigratedProviderAsync();
-        var account = Account.Open("Alice", "RUB", Now);
+        var userId = await SeedUserAsync(provider);
+        var account = TestData.OpenFor(userId);
 
         await using (var scope = provider.CreateAsyncScope())
         {
@@ -46,6 +53,37 @@ public class RepositoryTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task UserQueries_ListCountAndOwnership_AreScopedToTheUser()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var alice = await SeedUserAsync(provider);
+        var bob = await SeedUserAsync(provider);
+        var first = Account.Open("Alice", "RUB", Now, userId: alice);
+        var second = Account.Open("Alice", "USD", Now.AddMinutes(1), userId: alice);
+        var bobs = TestData.OpenFor(bob);
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var accounts = scope.ServiceProvider.GetRequiredService<IAccountRepository>();
+            accounts.Add(second);
+            accounts.Add(first);
+            accounts.Add(bobs);
+            await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var readScope = provider.CreateAsyncScope();
+        var repository = readScope.ServiceProvider.GetRequiredService<IAccountRepository>();
+
+        var listed = await repository.ListByUserAsync(alice, CancellationToken.None);
+
+        Assert.Equal([first.Id, second.Id], listed.Select(a => a.Id));
+        Assert.Equal(2, await repository.CountByUserAsync(alice, CancellationToken.None));
+        Assert.Equal(0, await repository.CountByUserAsync(Guid.NewGuid(), CancellationToken.None));
+        Assert.True(await repository.IsOwnedByAsync(first.Id, alice, CancellationToken.None));
+        Assert.False(await repository.IsOwnedByAsync(bobs.Id, alice, CancellationToken.None));
+        Assert.False(await repository.IsOwnedByAsync(SystemAccounts.CashId("RUB"), alice, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task Find_Unknown_ReturnsNull()
     {
         await using var provider = await MigratedProviderAsync();
@@ -61,7 +99,8 @@ public class RepositoryTests(PostgresFixture postgres)
     public async Task SaveChanges_OnStaleVersion_ThrowsConcurrencyConflict()
     {
         await using var provider = await MigratedProviderAsync();
-        var account = Account.Open("Alice", "RUB", Now);
+        var userId = await SeedUserAsync(provider);
+        var account = TestData.OpenFor(userId);
         await using (var scope = provider.CreateAsyncScope())
         {
             scope.ServiceProvider.GetRequiredService<IAccountRepository>().Add(account);
@@ -87,7 +126,8 @@ public class RepositoryTests(PostgresFixture postgres)
     public async Task GetEntries_ReturnsNewestFirstAndPages()
     {
         await using var provider = await MigratedProviderAsync();
-        var account = Account.Open("Alice", "RUB", Now);
+        var userId = await SeedUserAsync(provider);
+        var account = TestData.OpenFor(userId);
 
         await using (var scope = provider.CreateAsyncScope())
         {

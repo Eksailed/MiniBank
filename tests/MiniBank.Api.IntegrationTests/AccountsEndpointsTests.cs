@@ -15,9 +15,9 @@ public class AccountsEndpointsTests(PostgresFixture postgres)
     public async Task PostAccounts_Returns201WithLocationAndZeroBalance()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
-        var response = await client.PostAsJsonAsync("/accounts", new { owner = "Alice", currency = "RUB" });
+        var response = await client.PostAsJsonAsync("/accounts", new { currency = "RUB" });
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var account = await response.Content.ReadFromJsonAsync<AccountDto>();
@@ -31,9 +31,9 @@ public class AccountsEndpointsTests(PostgresFixture postgres)
     public async Task PostAccounts_LowercaseCurrency_IsNormalized()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
-        var response = await client.PostAsJsonAsync("/accounts", new { owner = "Alice", currency = "rub" });
+        var response = await client.PostAsJsonAsync("/accounts", new { currency = "rub" });
 
         var account = await response.Content.ReadFromJsonAsync<AccountDto>();
         Assert.Equal("RUB", account!.Currency);
@@ -46,43 +46,19 @@ public class AccountsEndpointsTests(PostgresFixture postgres)
     public async Task PostAccounts_BadCurrency_Returns400ProblemDetails(string currency)
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
-        var response = await client.PostAsJsonAsync("/accounts", new { owner = "Alice", currency });
+        var response = await client.PostAsJsonAsync("/accounts", new { currency });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]
-    public async Task PostAccounts_OwnerTooLongOrWithNul_Returns400Not500()
-    {
-        await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-
-        var tooLong = await client.PostAsJsonAsync("/accounts", new { owner = new string('x', 201), currency = "RUB" });
-        var withNul = await client.PostAsJsonAsync("/accounts", new { owner = "a\0b", currency = "RUB" });
-
-        Assert.Equal(HttpStatusCode.BadRequest, tooLong.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, withNul.StatusCode);
-    }
-
-    [Fact]
-    public async Task PostAccounts_EmptyOwner_Returns400()
-    {
-        await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-
-        var response = await client.PostAsJsonAsync("/accounts", new { owner = "", currency = "RUB" });
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-    }
-
-    [Fact]
     public async Task PostAccounts_MalformedJson_Returns400()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
         var response = await client.PostAsync("/accounts", Json("{not json"));
 
@@ -93,7 +69,7 @@ public class AccountsEndpointsTests(PostgresFixture postgres)
     public async Task PostAccounts_MissingFields_Returns400()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
 
         var response = await client.PostAsync("/accounts", Json("{}"));
 
@@ -104,8 +80,8 @@ public class AccountsEndpointsTests(PostgresFixture postgres)
     public async Task GetAccount_Returns200AndUnknownReturns404()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var created = await (await client.PostAsJsonAsync("/accounts", new { owner = "Alice", currency = "RUB" }))
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var created = await (await client.PostAsJsonAsync("/accounts", new { currency = "RUB" }))
             .Content.ReadFromJsonAsync<AccountDto>();
 
         var found = await client.GetAsync($"/accounts/{created!.Id}");

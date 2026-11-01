@@ -30,8 +30,9 @@ public class LockingTests(PostgresFixture postgres)
     private static async Task<Guid> CreateAccountAsync(ServiceProvider provider)
     {
         await using var scope = provider.CreateAsyncScope();
+        var user = await TestData.SeedUserAsync(scope.ServiceProvider.GetRequiredService<MiniBankDbContext>());
         var accounts = scope.ServiceProvider.GetRequiredService<IAccountRepository>();
-        var account = Account.Open("owner", "RUB", DateTimeOffset.UtcNow);
+        var account = TestData.OpenFor(user.Id);
         accounts.Add(account);
         await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(default);
         return account.Id;
@@ -96,7 +97,8 @@ public class LockingTests(PostgresFixture postgres)
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             InTransactionAsync<int>(provider, async (sp, ct) =>
             {
-                var account = Account.Open("owner", "RUB", DateTimeOffset.UtcNow);
+                var user = await TestData.SeedUserAsync(sp.GetRequiredService<MiniBankDbContext>());
+                var account = TestData.OpenFor(user.Id);
                 created = account.Id;
                 sp.GetRequiredService<IAccountRepository>().Add(account);
                 await sp.GetRequiredService<IUnitOfWork>().SaveChangesAsync(ct);

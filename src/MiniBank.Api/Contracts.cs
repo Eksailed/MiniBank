@@ -1,6 +1,6 @@
 namespace MiniBank.Api;
 
-public sealed record CreateAccountRequest(string Owner, string Currency);
+public sealed record CreateAccountRequest(string Currency);
 
 public sealed record DepositRequest(long Amount, string Currency);
 

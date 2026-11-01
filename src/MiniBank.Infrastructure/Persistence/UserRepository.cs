@@ -9,6 +9,11 @@ internal sealed class UserRepository(MiniBankDbContext db) : IUserRepository
     public async Task<User?> FindByIdAsync(Guid id, CancellationToken ct) =>
         await db.Users.FindAsync([id], ct);
 
+    public Task<User?> FindByIdForUpdateAsync(Guid id, CancellationToken ct) =>
+        db.Users
+            .FromSqlRaw("SELECT * FROM users WHERE id = {0} FOR UPDATE", id)
+            .FirstOrDefaultAsync(ct);
+
     public Task<User?> FindByEmailAsync(string normalizedEmail, CancellationToken ct) =>
         db.Users.FirstOrDefaultAsync(u => u.Email == normalizedEmail, ct);
 

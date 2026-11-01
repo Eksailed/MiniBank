@@ -10,9 +10,9 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
 {
     private const string Replayed = "Idempotent-Replayed";
 
-    private static async Task<AccountDto> CreateAccountAsync(HttpClient client, string owner)
+    private static async Task<AccountDto> CreateAccountAsync(HttpClient client)
     {
-        var response = await client.PostAsJsonAsync("/accounts", new { owner, currency = "RUB" });
+        var response = await client.PostAsJsonAsync("/accounts", new { currency = "RUB" });
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<AccountDto>())!;
     }
@@ -34,8 +34,8 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
     public async Task Deposit_WithoutKey_Returns400ProblemDetails()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var account = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var account = await CreateAccountAsync(client);
 
         var response = await client.PostAsJsonAsync($"/accounts/{account.Id}/deposit", new { amount = 100, currency = "RUB" });
 
@@ -48,9 +48,9 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_WithoutKey_Returns400()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var alice = await CreateAccountAsync(client, "Alice");
-        var bob = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var alice = await CreateAccountAsync(client);
+        var bob = await CreateAccountAsync(client);
         (await DepositAsync(client, alice.Id, 500, null)).EnsureSuccessStatusCode();
 
         var response = await client.PostAsJsonAsync(
@@ -68,8 +68,8 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
     public async Task Key_BlankOrTooLong_Returns400(string key)
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var account = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var account = await CreateAccountAsync(client);
 
         var response = await DepositAsync(client, account.Id, 100, key);
 
@@ -81,8 +81,8 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
     public async Task Deposit_RepeatedKey_ReturnsSameBodyAndReplayedHeader()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var account = await CreateAccountAsync(client, "Alice");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var account = await CreateAccountAsync(client);
 
         var first = await DepositAsync(client, account.Id, 250, "dep-1");
         var second = await DepositAsync(client, account.Id, 250, "dep-1");
@@ -100,9 +100,9 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_RepeatedKey_MovesMoneyOnce()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var alice = await CreateAccountAsync(client, "Alice");
-        var bob = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var alice = await CreateAccountAsync(client);
+        var bob = await CreateAccountAsync(client);
         (await DepositAsync(client, alice.Id, 1000, null)).EnsureSuccessStatusCode();
 
         var first = await TransferAsync(client, alice.Id, bob.Id, 300, "tr-1");
@@ -122,9 +122,9 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_SameKeyDifferentBody_Returns422()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var alice = await CreateAccountAsync(client, "Alice");
-        var bob = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var alice = await CreateAccountAsync(client);
+        var bob = await CreateAccountAsync(client);
         (await DepositAsync(client, alice.Id, 1000, null)).EnsureSuccessStatusCode();
         (await TransferAsync(client, alice.Id, bob.Id, 300, "tr-1")).EnsureSuccessStatusCode();
 
@@ -139,9 +139,9 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
     public async Task Key_SharedBetweenDepositAndTransfer_Returns422()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var alice = await CreateAccountAsync(client, "Alice");
-        var bob = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var alice = await CreateAccountAsync(client);
+        var bob = await CreateAccountAsync(client);
         (await DepositAsync(client, alice.Id, 500, "shared")).EnsureSuccessStatusCode();
 
         var response = await TransferAsync(client, alice.Id, bob.Id, 500, "shared");
@@ -155,9 +155,9 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_ParallelSameKey_CreatesOneTransfer()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var alice = await CreateAccountAsync(client, "Alice");
-        var bob = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var alice = await CreateAccountAsync(client);
+        var bob = await CreateAccountAsync(client);
         (await DepositAsync(client, alice.Id, 1000, null)).EnsureSuccessStatusCode();
 
         var responses = await ParallelRunner.RunAsync(
@@ -176,9 +176,9 @@ public class IdempotencyEndpointsTests(PostgresFixture postgres)
     public async Task Transfer_FailedRequest_DoesNotHoldKey()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
-        using var client = factory.CreateClient();
-        var alice = await CreateAccountAsync(client, "Alice");
-        var bob = await CreateAccountAsync(client, "Bob");
+        using var client = await TestUsers.NewSignedInClientAsync(factory);
+        var alice = await CreateAccountAsync(client);
+        var bob = await CreateAccountAsync(client);
 
         var failed = await TransferAsync(client, alice.Id, bob.Id, 100, "retry-1");
         (await DepositAsync(client, alice.Id, 500, null)).EnsureSuccessStatusCode();

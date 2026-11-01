@@ -9,6 +9,11 @@ public sealed class TransferNotAllowedException(string message) : Exception(mess
 
 public sealed class ConcurrencyConflictException(string message) : Exception(message);
 
+public sealed class AccountLimitReachedException(int limit) : Exception($"A user can have at most {limit} accounts.")
+{
+    public int Limit { get; } = limit;
+}
+
 public sealed class EmailTakenException() : Exception("Email is already registered.");
 
 public sealed class InvalidConfirmationTokenException() : Exception("The confirmation token is invalid, expired or already used.");

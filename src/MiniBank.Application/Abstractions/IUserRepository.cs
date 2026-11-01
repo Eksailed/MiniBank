@@ -6,6 +6,9 @@ public interface IUserRepository
 {
     Task<User?> FindByIdAsync(Guid id, CancellationToken ct);
 
+    /// <summary>Читает пользователя с блокировкой строки: сериализует операции над его счетами. Вызывать в транзакции.</summary>
+    Task<User?> FindByIdForUpdateAsync(Guid id, CancellationToken ct);
+
     Task<User?> FindByEmailAsync(string normalizedEmail, CancellationToken ct);
 
     /// <summary>Читает пользователя с блокировкой строки (<c>FOR UPDATE</c>): сериализует операции над ним. Вызывать в транзакции.</summary>

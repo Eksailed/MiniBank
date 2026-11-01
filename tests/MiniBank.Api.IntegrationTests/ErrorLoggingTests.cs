@@ -48,12 +48,24 @@ public class ErrorLoggingTests(PostgresFixture postgres)
             IReadOnlyCollection<Guid> ids, CancellationToken ct) =>
             throw new InvalidOperationException("secret db detail");
 
+        public Task<IReadOnlyList<Account>> ListByUserAsync(Guid userId, CancellationToken ct) =>
+            throw new InvalidOperationException("secret db detail");
+
+        public Task<int> CountByUserAsync(Guid userId, CancellationToken ct) =>
+            throw new InvalidOperationException("secret db detail");
+
+        public Task<bool> IsOwnedByAsync(Guid accountId, Guid userId, CancellationToken ct) =>
+            throw new InvalidOperationException("secret db detail");
+
         public void Add(Account account) => throw new InvalidOperationException("secret db detail");
     }
 
-    private static HttpClient CreateClient(
-        ApiFactory factory, CollectingLoggerProvider logs, bool throwingRepository, out IDisposable owner)
+    private static async Task<HttpClient> CreateClientAsync(
+        ApiFactory factory, CollectingLoggerProvider logs, bool throwingRepository, IList<IDisposable> owners)
     {
+        // Токен получаем на обычном хосте: настроенный ниже делит с ним базу и ключ подписи.
+        using var signedIn = await TestUsers.NewSignedInClientAsync(factory);
+
         var configured = factory.WithWebHostBuilder(builder =>
         {
             builder.ConfigureLogging(logging => logging.AddProvider(logs));
@@ -64,8 +76,9 @@ public class ErrorLoggingTests(PostgresFixture postgres)
                     services.AddScoped<IAccountRepository, ThrowingAccountRepository>();
                 });
         });
-        owner = configured;
+        owners.Add(configured);
         var client = configured.CreateClient();
+        client.DefaultRequestHeaders.Authorization = signedIn.DefaultRequestHeaders.Authorization;
         // Запуск хоста применяет миграции и пишет служебные записи (EF логирует Error при проверке пустой БД):
         // нас интересуют только записи, появившиеся при обработке запросов.
         logs.Records.Clear();
@@ -77,11 +90,12 @@ public class ErrorLoggingTests(PostgresFixture postgres)
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
         var logs = new CollectingLoggerProvider();
-        using var client = CreateClient(factory, logs, throwingRepository: false, out var owner);
-        using var _ = owner;
+        var owners = new List<IDisposable>();
+        using var client = await CreateClientAsync(factory, logs, throwingRepository: false, owners);
+        using var _ = owners[0];
 
         var notFound = await client.GetAsync($"/accounts/{Guid.NewGuid()}");
-        var invalid = await client.PostAsJsonAsync("/accounts", new { owner = "", currency = "RUB" });
+        var invalid = await client.PostAsJsonAsync("/accounts", new { currency = "" });
 
         Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
@@ -93,8 +107,9 @@ public class ErrorLoggingTests(PostgresFixture postgres)
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);
         var logs = new CollectingLoggerProvider();
-        using var client = CreateClient(factory, logs, throwingRepository: true, out var owner);
-        using var _ = owner;
+        var owners = new List<IDisposable>();
+        using var client = await CreateClientAsync(factory, logs, throwingRepository: true, owners);
+        using var _ = owners[0];
 
         var response = await client.GetAsync($"/accounts/{Guid.NewGuid()}");
         var body = await response.Content.ReadAsStringAsync();

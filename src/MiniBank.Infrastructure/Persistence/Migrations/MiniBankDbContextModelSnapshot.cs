@@ -56,6 +56,10 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("status");
 
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
                     b.Property<int>("Version")
                         .IsConcurrencyToken()
                         .HasColumnType("integer")
@@ -64,9 +68,14 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                     b.HasKey("Id")
                         .HasName("pk_accounts");
 
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_accounts_user_id");
+
                     b.ToTable("accounts", null, t =>
                         {
                             t.HasCheckConstraint("ck_accounts_balance_non_negative", "balance >= 0 OR is_system");
+
+                            t.HasCheckConstraint("ck_accounts_owner_required", "is_system OR user_id IS NOT NULL");
                         });
 
                     b.HasData(
@@ -300,6 +309,15 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                         .HasName("pk_idempotency_keys");
 
                     b.ToTable("idempotency_keys", (string)null);
+                });
+
+            modelBuilder.Entity("MiniBank.Domain.Account", b =>
+                {
+                    b.HasOne("MiniBank.Domain.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_accounts_users_user_id");
                 });
 
             modelBuilder.Entity("MiniBank.Domain.EmailConfirmationToken", b =>

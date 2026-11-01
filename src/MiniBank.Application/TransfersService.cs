@@ -13,18 +13,23 @@ public sealed class TransfersService(
     TimeProvider clock)
 {
     public async Task<IdempotentResult<TransferDto>> TransferAsync(
-        string? idempotencyKey, Guid fromId, Guid toId, long amount, string? currency, CancellationToken ct)
+        Guid userId, string? idempotencyKey, Guid fromId, Guid toId, long amount, string? currency, CancellationToken ct)
     {
         if (fromId == Guid.Empty || toId == Guid.Empty)
             throw new DomainValidationException("Both fromAccountId and toAccountId are required.");
 
         var money = Money.Of(amount, currency);
-        var hash = Hash($"transfer|{fromId}|{toId}|{money.Amount}|{money.Currency}");
+        var hash = Hash($"transfer|{userId}|{fromId}|{toId}|{money.Amount}|{money.Currency}");
+
+        // До обращения к идемпотентности: чужой ключ с чужим счётом не должен ни вернуть сохранённый ответ, ни выдать факт его наличия.
+        await EnsureOwnedAsync(userId, fromId, ct);
 
         return await idempotency.ExecuteAsync(idempotencyKey, hash, async token =>
         {
             var locked = await accounts.FindForUpdateAsync([fromId, toId], token);
             var from = locked.GetValueOrDefault(fromId) ?? throw new AccountNotFoundException(fromId);
+            if (from.UserId != userId)
+                throw new AccountNotFoundException(fromId);
             var to = locked.GetValueOrDefault(toId) ?? throw new AccountNotFoundException(toId);
             if (from.IsSystem || to.IsSystem)
                 throw new TransferNotAllowedException("System accounts cannot take part in client transfers.");
@@ -34,22 +39,33 @@ public sealed class TransfersService(
     }
 
     public async Task<IdempotentResult<TransferDto>> DepositAsync(
-        string? idempotencyKey, Guid accountId, long amount, string? currency, CancellationToken ct)
+        Guid userId, string? idempotencyKey, Guid accountId, long amount, string? currency, CancellationToken ct)
     {
         var money = Money.Of(amount, currency);
         var cashId = SystemAccounts.CashId(money.Currency);
-        var hash = Hash($"deposit|{accountId}|{money.Amount}|{money.Currency}");
+        var hash = Hash($"deposit|{userId}|{accountId}|{money.Amount}|{money.Currency}");
+
+        await EnsureOwnedAsync(userId, accountId, ct);
 
         return await idempotency.ExecuteAsync(idempotencyKey, hash, async token =>
         {
             var locked = await accounts.FindForUpdateAsync([accountId, cashId], token);
             var account = locked.GetValueOrDefault(accountId) ?? throw new AccountNotFoundException(accountId);
+            if (account.UserId != userId)
+                throw new AccountNotFoundException(accountId);
             if (account.IsSystem)
                 throw new TransferNotAllowedException("System accounts cannot be deposited to.");
             var cash = locked.GetValueOrDefault(cashId) ?? throw new AccountNotFoundException(cashId);
 
             return await ExecuteAsync(cash, account, money, token);
         }, ct);
+    }
+
+    /// <summary>Чужой, системный и «ничейный» счета неотличимы от несуществующего: 404.</summary>
+    private async Task EnsureOwnedAsync(Guid userId, Guid accountId, CancellationToken ct)
+    {
+        if (!await accounts.IsOwnedByAsync(accountId, userId, ct))
+            throw new AccountNotFoundException(accountId);
     }
 
     private static string Hash(string canonicalRequest) =>

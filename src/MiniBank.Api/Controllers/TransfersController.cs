@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using MiniBank.Api.Auth;
 using MiniBank.Application;
 
 namespace MiniBank.Api.Controllers;
@@ -14,5 +15,5 @@ public class TransfersController(TransfersService transfers) : IdempotentControl
         [FromHeader(Name = IdempotencyHeaders.Key)] string? idempotencyKey,
         CancellationToken ct) =>
         Respond(await transfers.TransferAsync(
-            idempotencyKey, request.FromAccountId, request.ToAccountId, request.Amount, request.Currency, ct));
+            User.GetUserId(), idempotencyKey, request.FromAccountId, request.ToAccountId, request.Amount, request.Currency, ct));
 }
