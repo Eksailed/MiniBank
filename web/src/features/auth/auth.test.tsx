@@ -69,7 +69,7 @@ describe('route protection', () => {
 
   it('lets /register and /confirm-email open without a token', () => {
     const { unmount } = renderApp('/register', { token: null })
-    expect(screen.getByRole('button', { name: 'Зарегистрироваться' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Продолжить' })).toBeInTheDocument()
     unmount()
 
     server.use(http.post('/api/auth/confirm-email', () => new HttpResponse(null, { status: 204 })))
@@ -130,7 +130,7 @@ describe('login', () => {
 
     await fillLogin(user)
     expect(await screen.findByRole('alert')).toHaveTextContent('Email не подтверждён')
-    await user.click(screen.getByRole('button', { name: 'Отправить письмо ещё раз' }))
+    await user.click(screen.getByRole('button', { name: 'Отправить ещё раз' }))
 
     expect(await screen.findByText('Письмо отправлено')).toBeInTheDocument()
     expect(resent).toEqual([{ email: 'alice@example.com' }])
@@ -161,7 +161,7 @@ describe('registration', () => {
 
     await user.type(screen.getByLabelText('Email'), 'not-an-email')
     await user.type(screen.getByLabelText('Пароль'), 'short')
-    await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    await user.click(screen.getByRole('button', { name: 'Продолжить' }))
 
     expect(screen.getByLabelText('Email')).toBeInvalid()
     expect(screen.getByLabelText('Пароль')).toBeInvalid()
@@ -183,7 +183,7 @@ describe('registration', () => {
     await user.type(screen.getByLabelText('Email'), ' alice@example.com ')
     await user.type(screen.getByLabelText('Пароль'), 'secret-pass-1')
     await user.type(screen.getByLabelText('Имя'), ' Alice ')
-    await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    await user.click(screen.getByRole('button', { name: 'Продолжить' }))
 
     expect(await screen.findByText('Проверьте почту')).toBeInTheDocument()
     expect(screen.getByText(/alice@example\.com/)).toBeInTheDocument()
@@ -205,8 +205,8 @@ describe('registration', () => {
     await user.type(screen.getByLabelText('Email'), 'alice@example.com')
     await user.type(screen.getByLabelText('Пароль'), 'secret-pass-1')
     await user.type(screen.getByLabelText('Имя'), 'Alice')
-    await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
-    await user.click(await screen.findByRole('button', { name: 'Отправить письмо ещё раз' }))
+    await user.click(screen.getByRole('button', { name: 'Продолжить' }))
+    await user.click(await screen.findByRole('button', { name: 'Отправить ещё раз' }))
 
     expect(await screen.findByText('Письмо отправлено')).toBeInTheDocument()
     expect(resent).toEqual([{ email: 'alice@example.com' }])
@@ -226,7 +226,7 @@ describe('registration', () => {
     await user.type(screen.getByLabelText('Email'), 'alice@example.com')
     await user.type(screen.getByLabelText('Пароль'), 'secret-pass-1')
     await user.type(screen.getByLabelText('Имя'), 'Alice')
-    await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    await user.click(screen.getByRole('button', { name: 'Продолжить' }))
 
     const email = screen.getByLabelText('Email')
     await waitFor(() => expect(email).toBeInvalid())
@@ -260,9 +260,23 @@ describe('email confirmation', () => {
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Ссылка недействительна или устарела')
     await user.type(screen.getByLabelText('Email'), 'alice@example.com')
-    await user.click(screen.getByRole('button', { name: 'Отправить письмо ещё раз' }))
+    await user.click(screen.getByRole('button', { name: 'Отправить новое письмо' }))
 
     expect(await screen.findByText('Письмо отправлено')).toBeInTheDocument()
+  })
+
+  it('blocks a second resend until the cooldown ends', async () => {
+    server.use(http.post('/api/auth/resend-confirmation', () => new HttpResponse(null, { status: 202 })))
+    const user = userEvent.setup()
+    renderApp('/confirm-email#token=stale', { token: null })
+    server.use(http.post('/api/auth/confirm-email', () => problem(400, 'invalid_confirmation_token')))
+
+    await screen.findByRole('alert')
+    await user.type(screen.getByLabelText('Email'), 'alice@example.com')
+    await user.click(screen.getByRole('button', { name: 'Отправить новое письмо' }))
+
+    expect(await screen.findByText(/через 60 с/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Отправить новое письмо' })).toBeDisabled()
   })
 
   it('treats a link without a token as invalid without a request', async () => {

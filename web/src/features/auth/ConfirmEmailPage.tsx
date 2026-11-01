@@ -4,6 +4,7 @@ import { api } from '../../api/client'
 import { ApiError } from '../../api/errors'
 import { ErrorNotice } from '../../shared/ui'
 import { ResendConfirmation } from './ResendConfirmation'
+import { StatusIcon } from './StatusIcon'
 import styles from './auth.module.css'
 
 export function ConfirmEmailPage() {
@@ -23,10 +24,13 @@ export function ConfirmEmailPage() {
 
   if (confirm.isSuccess) {
     return (
-      <div className={styles.form}>
+      <div className={`${styles.screen} ${styles.center}`}>
+        <StatusIcon kind="success" />
         <h1 className={styles.heading}>Email подтверждён</h1>
         <p className={styles.text}>Теперь можно войти в MiniBank.</p>
-        <Link to="/login">Войти</Link>
+        <Link to="/login" className={`${styles.primaryLink} ${styles.fullWidth}`}>
+          Войти
+        </Link>
       </div>
     )
   }
@@ -35,12 +39,23 @@ export function ConfirmEmailPage() {
     const error = token === '' ? new ApiError(400, { code: 'invalid_confirmation_token' }) : confirm.error
     const isInvalidToken = error instanceof ApiError && error.code === 'invalid_confirmation_token'
     return (
-      <>
-        <ErrorNotice error={error} onRetry={isInvalidToken ? undefined : () => void confirm.refetch()} />
-        {isInvalidToken && <ResendConfirmation />}
-      </>
+      <div className={`${styles.screen} ${styles.center}`}>
+        <StatusIcon kind="error" />
+        <div className={styles.fullWidth}>
+          <ErrorNotice error={error} onRetry={isInvalidToken ? undefined : () => void confirm.refetch()} />
+        </div>
+        {isInvalidToken && (
+          <div className={styles.fullWidth}>
+            <ResendConfirmation label="Отправить новое письмо" />
+          </div>
+        )}
+      </div>
     )
   }
 
-  return <p className={styles.status}>Подтверждаем email…</p>
+  return (
+    <div className={`${styles.screen} ${styles.center}`}>
+      <p className={styles.status}>Подтверждаем email…</p>
+    </div>
+  )
 }

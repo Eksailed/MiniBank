@@ -1,20 +1,66 @@
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-top: 24px;
+}
+
+.center {
+  align-items: center;
+  text-align: center;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  align-self: center;
+}
+
+.logoMark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.logoText {
+  font-size: 22px;
+  font-weight: 700;
+}
+
 .form {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: var(--card);
 }
 
 .heading {
-  font-size: 18px;
+  font-size: 26px;
+}
+
+.step {
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .text {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 15px;
+}
+
+.text strong {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  font-size: 13px;
+  color: var(--muted);
 }
 
 .status {
@@ -31,30 +77,70 @@
 }
 
 .links a {
-  color: inherit;
-  text-decoration: underline;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
 }
 
-.menu {
+.statusIcon {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 14px;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
 }
 
-.name {
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.iconMail {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
-.logout {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--muted);
-  text-decoration: underline;
-  cursor: pointer;
-  font-size: 14px;
+.iconSuccess {
+  background: var(--pos-soft);
+  color: var(--pos);
+}
+
+.iconError {
+  background: var(--neg-soft);
+  color: var(--neg);
+}
+
+.strength {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.strength span {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+}
+
+.strength .on1 {
+  background: var(--neg);
+}
+
+.strength .on2 {
+  background: #f5a524;
+}
+
+.strength .on3,
+.strength .on4 {
+  background: var(--pos);
+}
+
+.fullWidth {
+  align-self: stretch;
+}
+
+.primaryLink {
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
 }

@@ -4,8 +4,10 @@ import { Link } from 'react-router'
 import { api } from '../../api/client'
 import { ApiError } from '../../api/errors'
 import { Button, ErrorNotice, TextField } from '../../shared/ui'
+import { AuthLogo } from './AuthLogo'
 import { ResendConfirmation } from './ResendConfirmation'
-import { isEmail, MIN_PASSWORD_LENGTH } from './validation'
+import { StatusIcon } from './StatusIcon'
+import { isEmail, MIN_PASSWORD_LENGTH, passwordStrength } from './validation'
 import styles from './auth.module.css'
 
 interface FieldErrors {
@@ -35,13 +37,18 @@ export function RegisterPage() {
 
   if (register.isSuccess) {
     return (
-      <div className={styles.form}>
+      <div className={`${styles.screen} ${styles.center}`}>
+        <StatusIcon kind="mail" />
         <h1 className={styles.heading}>Проверьте почту</h1>
         <p className={styles.text}>
-          Мы отправили письмо на {email.trim()}. Перейдите по ссылке из письма, чтобы подтвердить адрес.
+          Мы отправили письмо на <strong>{email.trim()}</strong>. Перейдите по ссылке из письма, чтобы подтвердить адрес.
         </p>
-        <ResendConfirmation email={email.trim()} />
-        <Link to="/login">Перейти ко входу</Link>
+        <div className={styles.fullWidth}>
+          <ResendConfirmation email={email.trim()} />
+        </div>
+        <Link to="/login" className={styles.links}>
+          Перейти ко входу
+        </Link>
       </div>
     )
   }
@@ -49,10 +56,23 @@ export function RegisterPage() {
   const emailTaken = register.error instanceof ApiError && register.error.code === 'email_taken'
   const emailError = errors.email ?? (emailTaken ? 'Этот email уже зарегистрирован' : undefined)
 
+  const strength = passwordStrength(password)
+
   return (
-    <>
+    <div className={styles.screen}>
+      <AuthLogo />
       <form className={styles.form} onSubmit={submit} noValidate>
-        <h1 className={styles.heading}>Регистрация</h1>
+        <p className={styles.step}>Шаг 1 из 2</p>
+        <h1 className={styles.heading}>Создайте аккаунт</h1>
+        <TextField
+          label="Имя"
+          autoComplete="name"
+          maxLength={100}
+          value={displayName}
+          error={errors.displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+        />
+        <p className={styles.hint}>Имя увидят получатели ваших переводов</p>
         <TextField
           label="Email"
           type="email"
@@ -69,22 +89,19 @@ export function RegisterPage() {
           error={errors.password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <TextField
-          label="Имя"
-          autoComplete="name"
-          maxLength={100}
-          value={displayName}
-          error={errors.displayName}
-          onChange={(e) => setDisplayName(e.target.value)}
-        />
+        <div className={styles.strength} aria-hidden="true">
+          {[1, 2, 3, 4].map((level) => (
+            <span key={level} className={strength >= level ? styles[`on${strength}`] : undefined} />
+          ))}
+        </div>
         {register.isError && !emailTaken && <ErrorNotice error={register.error} />}
         <Button type="submit" pending={register.isPending}>
-          Зарегистрироваться
+          Продолжить
         </Button>
       </form>
       <p className={styles.links}>
         Уже есть аккаунт? <Link to="/login">Войти</Link>
       </p>
-    </>
+    </div>
   )
 }

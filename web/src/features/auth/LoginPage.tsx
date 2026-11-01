@@ -5,6 +5,7 @@ import { api } from '../../api/client'
 import { ApiError } from '../../api/errors'
 import { Button, ErrorNotice, TextField } from '../../shared/ui'
 import { useAuth } from './AuthProvider'
+import { AuthLogo } from './AuthLogo'
 import { ResendConfirmation } from './ResendConfirmation'
 import { safeNext } from './safeNext'
 import styles from './auth.module.css'
@@ -36,9 +37,11 @@ export function LoginPage() {
   const notConfirmed = login.error instanceof ApiError && login.error.code === 'email_not_confirmed'
 
   return (
-    <>
+    <div className={styles.screen}>
+      <AuthLogo />
       <form className={styles.form} onSubmit={submit} noValidate>
         <h1 className={styles.heading}>Вход</h1>
+        <p className={styles.text}>Войдите, чтобы увидеть счета</p>
         <TextField
           label="Email"
           type="email"
@@ -64,6 +67,6 @@ export function LoginPage() {
       <p className={styles.links}>
         Нет аккаунта? <Link to="/register">Зарегистрироваться</Link>
       </p>
-    </>
+    </div>
   )
 }
