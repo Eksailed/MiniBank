@@ -59,8 +59,8 @@ done
 [ -n "$MESSAGE_ID" ] || fail "письмо для $EMAIL не пришло в Mailpit"
 echo "ok: письмо подтверждения пришло в Mailpit"
 
-# Ссылка из письма: <Web__BaseUrl>/confirm-email?token=<base64url>.
-TOKEN="$(curl -s "$MAILPIT/api/v1/message/$MESSAGE_ID" | sed -n 's/.*confirm-email?token=\([A-Za-z0-9_-]*\).*/\1/p')"
+# Ссылка из письма: <Web__BaseUrl>/confirm-email#token=<base64url> (токен во фрагменте, до сервера не доходит).
+TOKEN="$(curl -s "$MAILPIT/api/v1/message/$MESSAGE_ID" | sed -n 's/.*confirm-email#token=\([A-Za-z0-9_-]*\).*/\1/p')"
 [ -n "$TOKEN" ] || fail "в письме нет ссылки с токеном подтверждения"
 
 expect_status "POST /api/auth/confirm-email" 204 -X POST "$BASE/api/auth/confirm-email" \
@@ -112,7 +112,7 @@ case "$BODY" in *'id="root"'*) ;; *) fail "GET / не вернул страни�
 # Глубокие ссылки SPA отдают index.html, в том числе ссылка из письма.
 expect_status "GET /accounts/{id}" 200 "$BASE/accounts/$FROM"
 case "$BODY" in *'id="root"'*) ;; *) fail "GET /accounts/{id} не вернул страницу приложения" ;; esac
-expect_status "GET /confirm-email?token=..." 200 "$BASE/confirm-email?token=$TOKEN"
+expect_status "GET /confirm-email" 200 "$BASE/confirm-email"
 case "$BODY" in *'id="root"'*) ;; *) fail "GET /confirm-email не вернул страницу приложения" ;; esac
 
 # Лимит запросов считается по адресу клиента: подделанный X-Forwarded-For извне ничего не меняет

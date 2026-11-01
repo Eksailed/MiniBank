@@ -215,7 +215,7 @@ describe('email confirmation', () => {
         return new HttpResponse(null, { status: 204 })
       }),
     )
-    renderApp('/confirm-email?token=abc123', { token: null })
+    renderApp('/confirm-email#token=abc123', { token: null })
 
     expect(await screen.findByText('Email подтверждён')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Войти' })).toHaveAttribute('href', '/login')
@@ -228,7 +228,7 @@ describe('email confirmation', () => {
       http.post('/api/auth/resend-confirmation', () => new HttpResponse(null, { status: 202 })),
     )
     const user = userEvent.setup()
-    renderApp('/confirm-email?token=stale', { token: null })
+    renderApp('/confirm-email#token=stale', { token: null })
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Ссылка недействительна или устарела')
     await user.type(screen.getByLabelText('Email'), 'alice@example.com')

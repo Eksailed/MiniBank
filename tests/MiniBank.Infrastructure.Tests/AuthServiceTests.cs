@@ -146,7 +146,7 @@ public class AuthServiceTests(PostgresFixture postgres)
         var token = h.Email.LastConfirmationToken("alice@example.com");
         Assert.Equal("alice@example.com", message.To);
         Assert.Equal("Подтвердите email в MiniBank", message.Subject);
-        Assert.Contains($"https://app.test/confirm-email?token={token}", message.Body);
+        Assert.Contains($"https://app.test/confirm-email#token={token}", message.Body);
 
         var (user, tokens) = await h.QueryAsync(async db => (await db.Users.SingleAsync(), await db.EmailConfirmationTokens.ToListAsync()));
         Assert.Equal("alice@example.com", user.Email);

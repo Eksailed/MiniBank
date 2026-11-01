@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Link, useSearchParams } from 'react-router'
+import { Link, useLocation } from 'react-router'
 import { api } from '../../api/client'
 import { ApiError } from '../../api/errors'
 import { ErrorNotice } from '../../shared/ui'
@@ -7,8 +7,9 @@ import { ResendConfirmation } from './ResendConfirmation'
 import styles from './auth.module.css'
 
 export function ConfirmEmailPage() {
-  const [params] = useSearchParams()
-  const token = params.get('token')?.trim() ?? ''
+  // Токен лежит во фрагменте (#token=…): браузер не отправляет его ни серверу, ни в Referer, и он не попадает в логи nginx.
+  const { hash } = useLocation()
+  const token = new URLSearchParams(hash.replace(/^#/, '')).get('token')?.trim() ?? ''
 
   // useQuery, а не эффект: токен одноразовый, а запрос должен уйти ровно один раз даже при двойном монтировании StrictMode.
   const confirm = useQuery({

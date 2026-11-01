@@ -48,6 +48,6 @@ public sealed partial class FakeEmailSender : IEmailSender
             : throw new InvalidOperationException("The email has no confirmation link.");
     }
 
-    [GeneratedRegex(@"confirm-email\?token=([A-Za-z0-9_-]+)")]
+    [GeneratedRegex(@"confirm-email#token=([A-Za-z0-9_-]+)")]
     private static partial Regex TokenPattern();
 }

@@ -150,7 +150,7 @@ public sealed class AuthService(
     /// <summary>Сбой отправки не откатывает регистрацию: пользователь может запросить письмо повторно.</summary>
     private async Task SendConfirmationAsync(Guid userId, string email, string displayName, string rawToken, CancellationToken ct)
     {
-        var link = $"{options.WebBaseUrl}/confirm-email?token={rawToken}";
+        var link = $"{options.WebBaseUrl}/confirm-email#token={rawToken}";
         var message = new EmailMessage(
             email,
             "Подтвердите email в MiniBank",
