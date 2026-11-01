@@ -50,7 +50,9 @@ services:
       # nginx приходит из сети Compose (172.16.0.0/12): только от него принимается X-Forwarded-For для лимита запросов.
       ForwardedHeaders__TrustedNetworks__0: "172.16.0.0/12"
     ports:
-      - "5050:8080"
+      # Только с этого компьютера: через опубликованный порт X-Forwarded-For приходит из доверенной сети Docker,
+      # и его подделкой можно было бы обойти лимит запросов. Из внешнего мира API доступен только через nginx.
+      - "127.0.0.1:5050:8080"
     depends_on:
       postgres:
         condition: service_healthy
