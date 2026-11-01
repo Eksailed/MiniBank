@@ -52,7 +52,7 @@ describe('home page', () => {
   it('offers to open the first account when the user has no accounts', async () => {
     renderApp('/')
     expect(await screen.findByText('Откройте первый счёт')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Открыть счёт' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Новый счёт' })).toBeInTheDocument()
   })
 
   it('has no local directory: no "add by id" form', async () => {
@@ -78,6 +78,19 @@ describe('home page', () => {
     expect(screen.queryByText('Откройте первый счёт')).not.toBeInTheDocument()
   })
 
+  it('shows account cards with a mask and action tiles for the first account', async () => {
+    server.use(
+      http.get('/api/accounts', () => HttpResponse.json([account(ID, 'Alice', 1245000), account(OTHER, 'Bob', 5000)])),
+    )
+    renderApp('/')
+
+    const first = await screen.findByRole('link', { name: /Alice/ })
+    expect(within(first).getByText(`•• ${ID.slice(-4).toUpperCase()}`)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Пополнить' })).toHaveAttribute('href', `/accounts/${ID}/deposit`)
+    expect(screen.getByRole('link', { name: 'Перевести' })).toHaveAttribute('href', `/accounts/${ID}/transfer`)
+    expect(await screen.findByRole('progressbar', { name: 'Дневной лимит' })).toBeInTheDocument()
+  })
+
   it('shows an error with a retry when the list cannot be loaded', async () => {
     server.use(http.get('/api/accounts', () => HttpResponse.error()))
     renderApp('/')
@@ -98,6 +111,7 @@ describe('home page', () => {
     const user = userEvent.setup()
     renderApp('/')
 
+    await user.click(await screen.findByRole('button', { name: 'Новый счёт' }))
     expect(screen.queryByLabelText('Владелец')).not.toBeInTheDocument()
     await user.selectOptions(screen.getByLabelText('Валюта'), 'USD')
     await user.click(screen.getByRole('button', { name: 'Открыть счёт' }))
@@ -119,7 +133,8 @@ describe('home page', () => {
     const user = userEvent.setup()
     const { router } = renderApp('/')
 
-    await user.click(await screen.findByRole('button', { name: 'Открыть счёт' }))
+    await user.click(await screen.findByRole('button', { name: 'Новый счёт' }))
+    await user.click(screen.getByRole('button', { name: 'Открыть счёт' }))
     await screen.findByText('Последние операции')
     await user.click(screen.getByRole('link', { name: /Мои счета/ }))
 
@@ -132,7 +147,8 @@ describe('home page', () => {
     const user = userEvent.setup()
     renderApp('/')
 
-    await user.click(await screen.findByRole('button', { name: 'Открыть счёт' }))
+    await user.click(await screen.findByRole('button', { name: 'Новый счёт' }))
+    await user.click(screen.getByRole('button', { name: 'Открыть счёт' }))
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Достигнут максимум счетов')
@@ -214,6 +230,7 @@ describe('limits card', () => {
   async function openCard() {
     const user = userEvent.setup()
     renderApp(`/accounts/${ID}`)
+    await user.click(await screen.findByRole('button', { name: 'Изменить лимиты' }))
     const perOperation = await screen.findByLabelText('Лимит на операцию')
     return { user, perOperation, daily: screen.getByLabelText('Лимит в сутки') }
   }
@@ -233,6 +250,15 @@ describe('limits card', () => {
     expect(screen.getByText(/15\s000,00/)).toBeInTheDocument()
     expect(screen.getByText('Осталось сегодня')).toBeInTheDocument()
     expect(screen.getByText(/485\s000,00/)).toBeInTheDocument()
+  })
+
+  it('closes the limits sheet with Escape', async () => {
+    useLimitsHandlers()
+    const { user } = await openCard()
+
+    await user.keyboard('{Escape}')
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
   it('keeps the kopecks in the prefilled value', async () => {

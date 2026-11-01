@@ -1,11 +1,35 @@
 .row {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: 14px;
+  border-radius: 18px;
   background: var(--card);
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+}
+
+.iconIn {
+  background: var(--pos-soft);
+  color: var(--pos);
+}
+
+.iconOut {
+  background: var(--neg-soft);
+  color: var(--neg);
+}
+
+.what {
+  flex: 1;
+  min-width: 0;
 }
 
 .right {

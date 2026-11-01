@@ -1,11 +1,28 @@
 .card {
+  position: relative;
+  display: block;
+  overflow: hidden;
   padding: 20px;
   border-radius: 20px;
   background: var(--hero);
   color: var(--hero-text);
+  text-decoration: none;
+}
+
+.card::after {
+  content: '';
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: var(--chip);
 }
 
 .top {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -20,8 +37,20 @@
 }
 
 .balance {
-  margin-top: 12px;
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 16px;
   font-size: 32px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.mask {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 12px;
+  color: var(--hero-muted);
+  letter-spacing: 1px;
 }

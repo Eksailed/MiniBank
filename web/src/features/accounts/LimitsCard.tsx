@@ -7,8 +7,9 @@ import {
   parseMoney,
   type CurrencyCode,
 } from '../../shared/money'
-import { Button, ErrorNotice, TextField } from '../../shared/ui'
+import { Button, ErrorNotice, Sheet, TextField } from '../../shared/ui'
 import { useLimits, usePutLimits } from './queries'
+import { SpentToday } from './SpentToday'
 import styles from './LimitsCard.module.css'
 
 interface FieldErrors {
@@ -105,25 +106,23 @@ function LimitsForm({ id, currency, limits }: { id: string; currency: CurrencyCo
 
 export function LimitsCard({ id, currency }: { id: string; currency: CurrencyCode }) {
   const limits = useLimits(id)
+  const [editing, setEditing] = useState(false)
 
   return (
-    <section className={styles.card}>
-      <h2 className={styles.heading}>Лимиты</h2>
+    <section className={styles.card} aria-label="Лимиты">
       {limits.isPending && <p className={styles.muted}>Загрузка…</p>}
       {limits.isError && <ErrorNotice error={limits.error} onRetry={() => limits.refetch()} />}
       {limits.data && (
         <>
-          <dl className={styles.stats}>
-            <div>
-              <dt>Потрачено сегодня</dt>
-              <dd>{formatMoney(limits.data.spentToday, currency)}</dd>
-            </div>
-            <div>
-              <dt>Осталось сегодня</dt>
-              <dd>{formatMoney(limits.data.remainingToday, currency)}</dd>
-            </div>
-          </dl>
-          <LimitsForm id={id} currency={currency} limits={limits.data} />
+          <SpentToday limits={limits.data} currency={currency} />
+          <Button variant="secondary" onClick={() => setEditing(true)}>
+            Изменить лимиты
+          </Button>
+          {editing && (
+            <Sheet title="Лимиты" onClose={() => setEditing(false)}>
+              <LimitsForm id={id} currency={currency} limits={limits.data} />
+            </Sheet>
+          )}
         </>
       )}
     </section>

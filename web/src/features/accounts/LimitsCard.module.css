@@ -3,30 +3,8 @@
   flex-direction: column;
   gap: 12px;
   padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 20px;
+  border-radius: 18px;
   background: var(--card);
-}
-
-.heading {
-  font-size: 18px;
-}
-
-.stats {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin: 0;
-}
-
-.stats dt {
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.stats dd {
-  margin: 2px 0 0;
-  font-weight: 600;
 }
 
 .form {

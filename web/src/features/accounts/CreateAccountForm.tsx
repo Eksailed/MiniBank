@@ -18,7 +18,6 @@ export function CreateAccountForm() {
 
   return (
     <form className={styles.form} onSubmit={submit} noValidate>
-      <h2 className={styles.heading}>Новый счёт</h2>
       <div className={styles.select}>
         <label htmlFor="currency">Валюта</label>
         <select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value as CurrencyCode)}>
