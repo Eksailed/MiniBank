@@ -1,7 +1,7 @@
 .button {
   width: 100%;
-  padding: 15px 20px;
-  border-radius: 14px;
+  padding: 16px 20px;
+  border-radius: 16px;
   border: 1px solid transparent;
   font-weight: 600;
   font-size: 16px;
@@ -9,12 +9,12 @@
 }
 
 .primary {
-  background: var(--tile-main);
-  color: var(--tile-main-icon);
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .secondary {
-  background: transparent;
+  background: var(--card);
   border-color: var(--line);
   color: var(--text);
 }

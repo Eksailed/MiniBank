@@ -5,27 +5,41 @@
   min-height: 100vh;
 }
 
-.header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.logo {
-  font-size: 20px;
-  font-weight: 700;
-  text-decoration: none;
+.withNav {
+  padding-bottom: 96px;
 }
 
 .main {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.nav {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  justify-content: space-around;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  background: var(--card);
+  border-top: 1px solid var(--line);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 18px;
+  font-size: 12px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.active {
+  color: var(--accent);
 }

@@ -281,7 +281,7 @@ describe('session', () => {
         return HttpResponse.json({ id: 'u1', email: 'alice@example.com', displayName: 'Alice' })
       }),
     )
-    renderApp('/', { token: 'jwt-abc' })
+    renderApp('/profile', { token: 'jwt-abc' })
 
     await waitFor(() => expect(header).toBe('Bearer jwt-abc'))
   })
@@ -304,23 +304,24 @@ describe('session', () => {
 
   it('drops the token on a 401 and leads to /login', async () => {
     server.use(http.get('/api/me', () => problem(401)))
-    const { router } = renderApp('/', { token: 'expired' })
+    const { router } = renderApp('/profile', { token: 'expired' })
 
     await waitFor(() => expect(router.state.location.pathname).toBe('/login'))
     expect(getToken()).toBeNull()
     expect(sessionStorage.getItem(TOKEN_KEY)).toBeNull()
   })
 
-  it('shows the name from /me in the header', async () => {
+  it('shows the name and email from /me on the profile page', async () => {
     server.use(http.get('/api/me', () => HttpResponse.json({ id: 'u1', email: 'alice@example.com', displayName: 'Alice' })))
-    renderApp('/', { token: 'jwt-abc' })
+    renderApp('/profile', { token: 'jwt-abc' })
 
     expect(await screen.findByText('Alice')).toBeInTheDocument()
+    expect(screen.getByText('alice@example.com')).toBeInTheDocument()
   })
 
   it('"Выйти" clears the token and shows the login page', async () => {
     const user = userEvent.setup()
-    const { router } = renderApp('/', { token: 'jwt-abc' })
+    const { router } = renderApp('/profile', { token: 'jwt-abc' })
 
     await user.click(await screen.findByRole('button', { name: 'Выйти' }))
 

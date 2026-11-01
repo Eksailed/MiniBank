@@ -16,9 +16,9 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  max-width: 72px;
+  max-width: 60px;
   aspect-ratio: 1;
-  border-radius: 22px;
+  border-radius: 50%;
   background: var(--tile-icon);
   color: var(--text);
   transition: transform 0.12s ease;
@@ -29,8 +29,8 @@
 }
 
 .primary .icon {
-  background: var(--tile-main);
-  color: var(--tile-main-icon);
+  background: var(--accent);
+  color: var(--accent-text);
 }
 
 .label {

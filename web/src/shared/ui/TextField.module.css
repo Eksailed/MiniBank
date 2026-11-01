@@ -1,24 +1,36 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--field);
+  border: 1px solid transparent;
+}
+
+.field:focus-within {
+  border-color: var(--accent);
 }
 
 .label {
-  font-size: 13px;
+  font-size: 12px;
   color: var(--muted);
 }
 
 .input {
-  padding: 13px 14px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--card);
+  padding: 2px 0;
+  border: 0;
+  background: transparent;
   color: var(--text);
+  font-size: 16px;
+}
+
+.input:focus-visible {
+  outline: none;
 }
 
 .input[aria-invalid='true'] {
-  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .error {
