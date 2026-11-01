@@ -18,7 +18,10 @@ public static class TestData
         return user;
     }
 
+    /// <summary>Лимиты нового счёта в тестах: совпадают с умолчаниями рублёвого счёта из <c>appsettings.json</c>.</summary>
+    public static AccountLimits DefaultLimits { get; } = new(10_000_000, 30_000_000);
+
     /// <summary>Несистемный счёт пользователя; в БД попадает только после <c>Add</c> и сохранения.</summary>
     public static Account OpenFor(Guid userId, string currency = "RUB", string owner = "Alice") =>
-        Account.Open(owner, currency, Now, userId: userId);
+        Account.Open(owner, currency, Now, userId: userId, limits: DefaultLimits);
 }

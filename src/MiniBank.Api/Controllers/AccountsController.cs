@@ -26,6 +26,16 @@ public class AccountsController(AccountsService accounts, TransfersService trans
     public async Task<AccountDto> Get(Guid id, CancellationToken ct) =>
         await accounts.GetAsync(User.GetUserId(), id, ct);
 
+    [HttpGet("{id:guid}/limits")]
+    [ProducesResponseType<LimitsDto>(StatusCodes.Status200OK)]
+    public async Task<LimitsDto> GetLimits(Guid id, CancellationToken ct) =>
+        await accounts.GetLimitsAsync(User.GetUserId(), id, ct);
+
+    [HttpPut("{id:guid}/limits")]
+    [ProducesResponseType<LimitsDto>(StatusCodes.Status200OK)]
+    public async Task<LimitsDto> SetLimits(Guid id, UpdateLimitsRequest request, CancellationToken ct) =>
+        await accounts.SetLimitsAsync(User.GetUserId(), id, request.PerOperation, request.Daily, ct);
+
     [HttpPost("{id:guid}/deposit")]
     [ProducesResponseType<TransferDto>(StatusCodes.Status200OK)]
     public async Task<TransferDto> Deposit(

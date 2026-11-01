@@ -70,10 +70,61 @@ public class SchemaTests(PostgresFixture postgres)
         await using var _ = context;
 
         var ex = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(connectionString,
-            "INSERT INTO accounts (id, owner, currency, balance, version, status, is_system, created_at) " +
-            $"VALUES ('{Guid.NewGuid()}', 'x', 'RUB', 0, 0, 0, false, now())"));
+            "INSERT INTO accounts (id, owner, currency, balance, version, status, is_system, created_at, " +
+            "per_operation_limit, daily_limit) " +
+            $"VALUES ('{Guid.NewGuid()}', 'x', 'RUB', 0, 0, 0, false, now(), 100, 100)"));
 
         Assert.Equal("ck_accounts_owner_required", ex.ConstraintName);
+    }
+
+    [Theory]
+    [InlineData("per_operation_limit", 0)]
+    [InlineData("per_operation_limit", -1)]
+    [InlineData("daily_limit", 0)]
+    [InlineData("daily_limit", -5)]
+    public async Task Database_RejectsNonPositiveLimits(string column, long value)
+    {
+        var (connectionString, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+        var user = await TestData.SeedUserAsync(context);
+        var perOperation = column == "per_operation_limit" ? value : 100;
+        var daily = column == "daily_limit" ? value : 100;
+
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(connectionString,
+            "INSERT INTO accounts (id, owner, currency, balance, version, status, is_system, user_id, created_at, " +
+            "per_operation_limit, daily_limit) " +
+            $"VALUES ('{Guid.NewGuid()}', 'x', 'RUB', 0, 0, 0, false, '{user.Id}', now(), {perOperation}, {daily})"));
+
+        Assert.Equal("23514", ex.SqlState);
+    }
+
+    [Fact]
+    public async Task Database_RejectsNewNonSystemAccountWithoutLimits()
+    {
+        var (connectionString, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+        var user = await TestData.SeedUserAsync(context);
+
+        var ex = await Assert.ThrowsAsync<PostgresException>(() => ExecuteAsync(connectionString,
+            "INSERT INTO accounts (id, owner, currency, balance, version, status, is_system, user_id, created_at) " +
+            $"VALUES ('{Guid.NewGuid()}', 'x', 'RUB', 0, 0, 0, false, '{user.Id}', now())"));
+
+        Assert.Equal("ck_accounts_limits_required", ex.ConstraintName);
+    }
+
+    [Fact]
+    public async Task Migrate_SeededCashAccountsHaveNoLimits()
+    {
+        var (_, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+
+        var cash = await context.Accounts.Where(a => a.IsSystem).ToListAsync();
+
+        Assert.All(cash, a =>
+        {
+            Assert.Null(a.PerOperationLimit);
+            Assert.Null(a.DailyLimit);
+        });
     }
 
     [Fact]

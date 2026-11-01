@@ -16,4 +16,10 @@ internal sealed class LedgerQuery(MiniBankDbContext db) : ILedgerQuery
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(ct);
+
+    public async Task<long> GetSpentSinceAsync(Guid accountId, DateTimeOffset since, CancellationToken ct) =>
+        await db.LedgerEntries
+            .AsNoTracking()
+            .Where(e => e.AccountId == accountId && e.Amount < 0 && e.CreatedAt >= since)
+            .SumAsync(e => -e.Amount, ct);
 }

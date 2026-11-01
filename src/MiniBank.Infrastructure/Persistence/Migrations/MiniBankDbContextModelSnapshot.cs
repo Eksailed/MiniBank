@@ -42,6 +42,10 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(3)")
                         .HasColumnName("currency");
 
+                    b.Property<long?>("DailyLimit")
+                        .HasColumnType("bigint")
+                        .HasColumnName("daily_limit");
+
                     b.Property<bool>("IsSystem")
                         .HasColumnType("boolean")
                         .HasColumnName("is_system");
@@ -51,6 +55,10 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("owner");
+
+                    b.Property<long?>("PerOperationLimit")
+                        .HasColumnType("bigint")
+                        .HasColumnName("per_operation_limit");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
@@ -75,7 +83,13 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
                         {
                             t.HasCheckConstraint("ck_accounts_balance_non_negative", "balance >= 0 OR is_system");
 
+                            t.HasCheckConstraint("ck_accounts_daily_limit_positive", "daily_limit > 0");
+
+                            t.HasCheckConstraint("ck_accounts_limits_required", "is_system OR (per_operation_limit IS NOT NULL AND daily_limit IS NOT NULL)");
+
                             t.HasCheckConstraint("ck_accounts_owner_required", "is_system OR user_id IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_accounts_per_operation_limit_positive", "per_operation_limit > 0");
                         });
 
                     b.HasData(

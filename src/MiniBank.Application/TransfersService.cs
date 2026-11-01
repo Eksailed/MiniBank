@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using MiniBank.Application.Abstractions;
+using MiniBank.Application.Limits;
 using MiniBank.Domain;
 
 namespace MiniBank.Application;
@@ -9,6 +10,7 @@ public sealed class TransfersService(
     IAccountRepository accounts,
     ITransferRepository transfers,
     IUnitOfWork uow,
+    ILedgerQuery ledger,
     IdempotencyExecutor idempotency,
     TimeProvider clock)
 {
@@ -33,6 +35,10 @@ public sealed class TransfersService(
             var to = locked.GetValueOrDefault(toId) ?? throw new AccountNotFoundException(toId);
             if (from.IsSystem || to.IsSystem)
                 throw new TransferNotAllowedException("System accounts cannot take part in client transfers.");
+
+            // Расход читается после блокировки счёта: параллельные переводы с него идут по очереди и видят друг друга.
+            var spentToday = await ledger.GetSpentSinceAsync(fromId, LimitPolicy.StartOfDay(clock.GetUtcNow()), token);
+            from.EnsureCanSpend(money.Amount, spentToday);
 
             return await ExecuteAsync(from, to, money, token);
         }, ct);

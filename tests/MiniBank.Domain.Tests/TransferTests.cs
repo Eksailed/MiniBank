@@ -8,7 +8,7 @@ public class TransferTests
 
     private static Account Funded(long balance, string currency = "RUB")
     {
-        var account = Account.Open("owner", currency, Now);
+        var account = Account.Open("owner", currency, Now, limits: new AccountLimits(1_000_000, 3_000_000));
         if (balance > 0)
             account.Credit(Guid.NewGuid(), Money.Of(balance, currency), Now);
         return account;

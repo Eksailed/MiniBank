@@ -12,6 +12,7 @@ public static class ExceptionMapper
         EmailNotConfirmedException => StatusCodes.Status403Forbidden,
         InsufficientFundsException or AccountBlockedException or TransferNotAllowedException
             or IdempotencyKeyReuseException or AccountLimitReachedException
+            or PerOperationLimitExceededException or DailyLimitExceededException
             => StatusCodes.Status422UnprocessableEntity,
         AccountNotFoundException => StatusCodes.Status404NotFound,
         ConcurrencyConflictException or EmailTakenException => StatusCodes.Status409Conflict,
@@ -22,6 +23,8 @@ public static class ExceptionMapper
     public static string? ToErrorCode(Exception ex) => ex switch
     {
         AccountLimitReachedException => "account_limit_reached",
+        PerOperationLimitExceededException => "per_operation_limit_exceeded",
+        DailyLimitExceededException => "daily_limit_exceeded",
         EmailTakenException => "email_taken",
         InvalidConfirmationTokenException => "invalid_confirmation_token",
         InvalidCredentialsException => "invalid_credentials",

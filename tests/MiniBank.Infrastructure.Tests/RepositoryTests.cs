@@ -58,8 +58,8 @@ public class RepositoryTests(PostgresFixture postgres)
         await using var provider = await MigratedProviderAsync();
         var alice = await SeedUserAsync(provider);
         var bob = await SeedUserAsync(provider);
-        var first = Account.Open("Alice", "RUB", Now, userId: alice);
-        var second = Account.Open("Alice", "USD", Now.AddMinutes(1), userId: alice);
+        var first = Account.Open("Alice", "RUB", Now, userId: alice, limits: TestData.DefaultLimits);
+        var second = Account.Open("Alice", "USD", Now.AddMinutes(1), userId: alice, limits: TestData.DefaultLimits);
         var bobs = TestData.OpenFor(bob);
         await using (var scope = provider.CreateAsyncScope())
         {

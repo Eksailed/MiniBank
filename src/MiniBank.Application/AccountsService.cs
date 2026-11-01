@@ -1,10 +1,16 @@
 using MiniBank.Application.Abstractions;
+using MiniBank.Application.Limits;
 using MiniBank.Domain;
 
 namespace MiniBank.Application;
 
 public sealed class AccountsService(
-    IAccountRepository accounts, IUserRepository users, ILedgerQuery ledger, IUnitOfWork uow, TimeProvider clock)
+    IAccountRepository accounts,
+    IUserRepository users,
+    ILedgerQuery ledger,
+    IUnitOfWork uow,
+    LimitPolicy limitPolicy,
+    TimeProvider clock)
 {
     public const int MaxAccountsPerUser = 50;
 
@@ -21,7 +27,8 @@ public sealed class AccountsService(
             if (await accounts.CountByUserAsync(userId, token) >= MaxAccountsPerUser)
                 throw new AccountLimitReachedException(MaxAccountsPerUser);
 
-            var account = Account.Open(user.DisplayName, currency, clock.GetUtcNow(), userId: userId);
+            var account = Account.Open(
+                user.DisplayName, currency, clock.GetUtcNow(), userId: userId, limits: limitPolicy.Default(currency!));
             accounts.Add(account);
             await uow.SaveChangesAsync(token);
             return ToDto(account);
@@ -52,11 +59,44 @@ public sealed class AccountsService(
             .ToList();
     }
 
+    public async Task<LimitsDto> GetLimitsAsync(Guid userId, Guid id, CancellationToken ct) =>
+        await ToLimitsDtoAsync(await FindOwnedAsync(userId, id, ct), ct);
+
+    /// <summary>Меняет лимиты своего счёта; значения выше потолка валюты отвергаются.</summary>
+    public async Task<LimitsDto> SetLimitsAsync(Guid userId, Guid id, long perOperation, long daily, CancellationToken ct)
+    {
+        var owned = await FindOwnedAsync(userId, id, ct);
+        var limits = new AccountLimits(perOperation, daily);
+        limitPolicy.EnsureWithinMax(owned.Currency, limits);
+
+        // Строка блокируется, чтобы смена лимитов не конфликтовала с идущим переводом по оптимистичной версии.
+        await uow.ExecuteInTransactionAsync(async token =>
+        {
+            var locked = (await accounts.FindForUpdateAsync([id], token)).GetValueOrDefault(id)
+                ?? throw new AccountNotFoundException(id);
+            locked.SetLimits(limits);
+            await uow.SaveChangesAsync(token);
+            return 0;
+        }, ct);
+
+        return await GetLimitsAsync(userId, id, ct);
+    }
+
     /// <summary>Чужой, системный и «ничейный» счета неотличимы от несуществующего: везде 404.</summary>
     private async Task<Account> FindOwnedAsync(Guid userId, Guid id, CancellationToken ct)
     {
         var account = await accounts.FindAsync(id, ct);
         return account is { UserId: { } owner } && owner == userId ? account : throw new AccountNotFoundException(id);
+    }
+
+    private async Task<LimitsDto> ToLimitsDtoAsync(Account account, CancellationToken ct)
+    {
+        var perOperation = account.PerOperationLimit
+            ?? throw new InvalidOperationException($"Account {account.Id} has no limits.");
+        var daily = account.DailyLimit ?? throw new InvalidOperationException($"Account {account.Id} has no limits.");
+        var spent = await ledger.GetSpentSinceAsync(account.Id, LimitPolicy.StartOfDay(clock.GetUtcNow()), ct);
+        var max = limitPolicy.Max(account.Currency);
+        return new LimitsDto(perOperation, daily, spent, Math.Max(0, daily - spent), max.PerOperation, max.Daily);
     }
 
     private static AccountDto ToDto(Account a) =>

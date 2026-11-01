@@ -20,9 +20,16 @@ public sealed class Account
 
     /// <summary>Владелец счёта; <c>null</c> у кассы и у счетов, открытых до появления пользователей.</summary>
     public Guid? UserId { get; private set; }
+
+    /// <summary>Лимит одного исходящего перевода; <c>null</c> у кассы и у счетов, открытых до появления лимитов.</summary>
+    public long? PerOperationLimit { get; private set; }
+
+    /// <summary>Лимит исходящих переводов за сутки UTC; <c>null</c> там же, где и <see cref="PerOperationLimit"/>.</summary>
+    public long? DailyLimit { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
-    public static Account Open(string? owner, string? currency, DateTimeOffset now, bool isSystem = false, Guid? id = null, Guid? userId = null)
+    public static Account Open(string? owner, string? currency, DateTimeOffset now, bool isSystem = false, Guid? id = null, Guid? userId = null,
+        AccountLimits? limits = null)
     {
         if (string.IsNullOrWhiteSpace(owner))
             throw new DomainValidationException("Owner must not be empty.");
@@ -30,6 +37,8 @@ public sealed class Account
             throw new DomainValidationException($"Owner must be at most {MaxOwnerLength} characters.");
         if (owner.Contains('\0'))
             throw new DomainValidationException("Owner must not contain control characters.");
+        if (limits is null && !isSystem)
+            throw new DomainValidationException("Limits are required for a client account.");
 
         return new Account
         {
@@ -41,11 +50,37 @@ public sealed class Account
             Status = AccountStatus.Active,
             IsSystem = isSystem,
             UserId = userId,
+            PerOperationLimit = limits?.PerOperation,
+            DailyLimit = limits?.Daily,
             CreatedAt = now
         };
     }
 
     public void Block() => Status = AccountStatus.Blocked;
+
+    public void SetLimits(AccountLimits limits)
+    {
+        PerOperationLimit = limits.PerOperation;
+        DailyLimit = limits.Daily;
+    }
+
+    /// <summary>
+    /// Проверяет исходящий перевод на лимиты; у касс и у счетов без лимитов проверка не выполняется.
+    /// Если превышены оба, сообщается лимит одной операции.
+    /// </summary>
+    /// <param name="spentToday">Уже потрачено с начала текущих суток UTC (сумма модулей исходящих проводок).</param>
+    public void EnsureCanSpend(long amount, long spentToday)
+    {
+        if (IsSystem || PerOperationLimit is not { } perOperation || DailyLimit is not { } daily)
+            return;
+
+        if (amount > perOperation)
+            throw new PerOperationLimitExceededException(perOperation);
+
+        var remaining = Math.Max(0, daily - spentToday);
+        if (amount > remaining)
+            throw new DailyLimitExceededException(daily, remaining);
+    }
 
     internal LedgerEntry Debit(Guid transferId, Money amount, DateTimeOffset now)
     {

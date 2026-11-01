@@ -10,6 +10,7 @@ using MiniBank.Api.Auth;
 using MiniBank.Api.Errors;
 using MiniBank.Application;
 using MiniBank.Application.Abstractions;
+using MiniBank.Application.Limits;
 using MiniBank.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -40,7 +41,7 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 builder.Services.AddHealthChecks().AddDbContextCheck<MiniBankDbContext>();
-builder.Services.AddApplication();
+builder.Services.AddApplication(builder.Configuration.GetSection("Limits").Get<LimitsOptions>());
 builder.Services.AddInfrastructure(connectionString, builder.Configuration);
 
 builder.Services.AddSingleton(jwt);

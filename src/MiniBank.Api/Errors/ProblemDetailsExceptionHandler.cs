@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using MiniBank.Domain;
 
 namespace MiniBank.Api.Errors;
 
@@ -23,6 +24,16 @@ internal sealed class ProblemDetailsExceptionHandler(
         };
         if (ExceptionMapper.ToErrorCode(exception) is { } code)
             problem.Extensions["code"] = code;
+        switch (exception)
+        {
+            case PerOperationLimitExceededException perOperation:
+                problem.Extensions["limit"] = perOperation.Limit;
+                break;
+            case DailyLimitExceededException daily:
+                problem.Extensions["limit"] = daily.Limit;
+                problem.Extensions["remaining"] = daily.Remaining;
+                break;
+        }
 
         httpContext.Response.StatusCode = status;
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
