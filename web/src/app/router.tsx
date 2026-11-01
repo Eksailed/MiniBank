@@ -1,5 +1,6 @@
 import { createBrowserRouter, createMemoryRouter, type RouteObject } from 'react-router'
 import { AccountPage, HomePage } from '../features/accounts'
+import { ConfirmEmailPage, LoginPage, RegisterPage, RequireAuth, UserMenu } from '../features/auth'
 import { EntriesPage } from '../features/entries'
 import { DepositPage, TransferPage } from '../features/transfers'
 import { AppShell } from '../shared/ui'
@@ -8,11 +9,24 @@ const routes: RouteObject[] = [
   {
     element: <AppShell />,
     children: [
-      { path: '/', element: <HomePage /> },
-      { path: '/accounts/:id', element: <AccountPage /> },
-      { path: '/accounts/:id/deposit', element: <DepositPage /> },
-      { path: '/accounts/:id/transfer', element: <TransferPage /> },
-      { path: '/accounts/:id/entries', element: <EntriesPage /> },
+      { path: '/login', element: <LoginPage /> },
+      { path: '/register', element: <RegisterPage /> },
+      { path: '/confirm-email', element: <ConfirmEmailPage /> },
+    ],
+  },
+  {
+    element: <RequireAuth />,
+    children: [
+      {
+        element: <AppShell actions={<UserMenu />} />,
+        children: [
+          { path: '/', element: <HomePage /> },
+          { path: '/accounts/:id', element: <AccountPage /> },
+          { path: '/accounts/:id/deposit', element: <DepositPage /> },
+          { path: '/accounts/:id/transfer', element: <TransferPage /> },
+          { path: '/accounts/:id/entries', element: <EntriesPage /> },
+        ],
+      },
     ],
   },
 ]

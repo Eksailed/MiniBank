@@ -11,7 +11,28 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["AccountDto"][];
+                        "application/json": components["schemas"]["AccountDto"][];
+                        "text/json": components["schemas"]["AccountDto"][];
+                    };
+                };
+            };
+        };
         put?: never;
         post: {
             parameters: {
@@ -86,6 +107,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/accounts/{id}/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["LimitsDto"];
+                        "application/json": components["schemas"]["LimitsDto"];
+                        "text/json": components["schemas"]["LimitsDto"];
+                    };
+                };
+            };
+        };
+        put: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["UpdateLimitsRequest"];
+                    "text/json": components["schemas"]["UpdateLimitsRequest"];
+                    "application/*+json": components["schemas"]["UpdateLimitsRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["LimitsDto"];
+                        "application/json": components["schemas"]["LimitsDto"];
+                        "text/json": components["schemas"]["LimitsDto"];
+                    };
+                };
+            };
+        };
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/accounts/{id}/deposit": {
         parameters: {
             query?: never;
@@ -143,6 +232,9 @@ export interface paths {
         get: {
             parameters: {
                 query?: {
+                    from?: string;
+                    to?: string;
+                    direction?: string;
                     page?: number;
                     pageSize?: number;
                 };
@@ -163,6 +255,242 @@ export interface paths {
                         "text/plain": components["schemas"]["EntryDto"][];
                         "application/json": components["schemas"]["EntryDto"][];
                         "text/json": components["schemas"]["EntryDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/accounts/{id}/entries.csv": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: {
+                    from?: string;
+                    to?: string;
+                    direction?: string;
+                };
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["RegisterRequest"];
+                    "text/json": components["schemas"]["RegisterRequest"];
+                    "application/*+json": components["schemas"]["RegisterRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/confirm-email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ConfirmEmailRequest"];
+                    "text/json": components["schemas"]["ConfirmEmailRequest"];
+                    "application/*+json": components["schemas"]["ConfirmEmailRequest"];
+                };
+            };
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/resend-confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["ResendConfirmationRequest"];
+                    "text/json": components["schemas"]["ResendConfirmationRequest"];
+                    "application/*+json": components["schemas"]["ResendConfirmationRequest"];
+                };
+            };
+            responses: {
+                /** @description Accepted */
+                202: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: {
+                content: {
+                    "application/json": components["schemas"]["LoginRequest"];
+                    "text/json": components["schemas"]["LoginRequest"];
+                    "application/*+json": components["schemas"]["LoginRequest"];
+                };
+            };
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["LoginResponse"];
+                        "application/json": components["schemas"]["LoginResponse"];
+                        "text/json": components["schemas"]["LoginResponse"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "text/plain": components["schemas"]["UserProfileDto"];
+                        "application/json": components["schemas"]["UserProfileDto"];
+                        "text/json": components["schemas"]["UserProfileDto"];
                     };
                 };
             };
@@ -236,8 +564,10 @@ export interface components {
             /** Format: date-time */
             createdAt?: string;
         };
+        ConfirmEmailRequest: {
+            token?: string | null;
+        };
         CreateAccountRequest: {
-            owner?: string | null;
             currency?: string | null;
         };
         DepositRequest: {
@@ -256,6 +586,37 @@ export interface components {
             balanceAfter?: number;
             /** Format: date-time */
             createdAt?: string;
+        };
+        LimitsDto: {
+            /** Format: int64 */
+            perOperation?: number;
+            /** Format: int64 */
+            daily?: number;
+            /** Format: int64 */
+            spentToday?: number;
+            /** Format: int64 */
+            remainingToday?: number;
+            /** Format: int64 */
+            maxPerOperation?: number;
+            /** Format: int64 */
+            maxDaily?: number;
+        };
+        LoginRequest: {
+            email?: string | null;
+            password?: string | null;
+        };
+        LoginResponse: {
+            accessToken?: string | null;
+            /** Format: date-time */
+            expiresAt?: string;
+        };
+        RegisterRequest: {
+            email?: string | null;
+            password?: string | null;
+            displayName?: string | null;
+        };
+        ResendConfirmationRequest: {
+            email?: string | null;
         };
         TransferDto: {
             /** Format: uuid */
@@ -278,6 +639,18 @@ export interface components {
             /** Format: int64 */
             amount?: number;
             currency?: string | null;
+        };
+        UpdateLimitsRequest: {
+            /** Format: int64 */
+            perOperation?: number;
+            /** Format: int64 */
+            daily?: number;
+        };
+        UserProfileDto: {
+            /** Format: uuid */
+            id?: string;
+            email?: string | null;
+            displayName?: string | null;
         };
     };
     responses: never;

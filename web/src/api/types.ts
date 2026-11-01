@@ -23,6 +23,12 @@ export interface Entry {
   createdAt: string
 }
 
+export interface UserProfile {
+  id: string
+  email: string
+  displayName: string
+}
+
 export interface Transfer {
   id: string
   fromAccountId: string
@@ -86,5 +92,13 @@ export function toTransfer(dto: Schemas['TransferDto']): Transfer {
     amount: toBigInt(dto.amount, 'amount'),
     currency: toCurrency(dto.currency),
     createdAt: required(dto.createdAt, 'createdAt'),
+  }
+}
+
+export function toUserProfile(dto: Schemas['UserProfileDto']): UserProfile {
+  return {
+    id: required(dto.id, 'id'),
+    email: required(dto.email, 'email'),
+    displayName: required(dto.displayName, 'displayName'),
   }
 }

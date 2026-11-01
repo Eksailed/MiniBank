@@ -4,8 +4,15 @@ import { RouterProvider } from 'react-router/dom'
 import { AppProviders } from '../app/providers'
 import { createAppRouter } from '../app/router'
 import { createLocalStorageDirectory, type AccountDirectory } from '../features/accounts'
+import { setToken } from '../features/auth'
 
-export function renderApp(path = '/', options: { directory?: AccountDirectory } = {}) {
+/** По умолчанию пользователь уже вошёл; `token: null` — анонимный посетитель. */
+export function renderApp(
+  path = '/',
+  options: { directory?: AccountDirectory; token?: string | null } = {},
+) {
+  const { token = 'test-token' } = options
+  if (token !== null) setToken(token)
   const directory = options.directory ?? createLocalStorageDirectory()
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   const router = createAppRouter([path])

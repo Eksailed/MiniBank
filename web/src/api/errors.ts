@@ -1,6 +1,8 @@
 export interface ProblemBody {
   title?: string
   detail?: string
+  /** Машинный код ошибки (поле `code` в ProblemDetails), например `email_taken`. */
+  code?: string
   errors?: Record<string, string[]>
 }
 
@@ -9,6 +11,7 @@ export class ApiError extends Error {
   readonly status: number
   readonly title?: string
   readonly detail?: string
+  readonly code?: string
   readonly errors?: Record<string, string[]>
 
   constructor(status: number, problem: ProblemBody = {}) {
@@ -17,6 +20,7 @@ export class ApiError extends Error {
     this.status = status
     this.title = problem.title
     this.detail = problem.detail
+    this.code = problem.code
     this.errors = problem.errors
   }
 }
@@ -42,6 +46,18 @@ const KNOWN_DETAILS: Array<[RegExp, string]> = [
   [/balance overflow/i, 'Сумма слишком велика для счёта'],
 ]
 
+/** Ошибки с машинным кодом точнее, чем статус: тексты по-русски, без деталей бэкенда. */
+const CODE_DESCRIPTIONS: Record<string, ErrorDescription> = {
+  email_taken: { title: 'Этот email уже зарегистрирован', retryable: false },
+  invalid_confirmation_token: { title: 'Ссылка недействительна или устарела', retryable: false },
+  invalid_credentials: { title: 'Неверный email или пароль', retryable: false },
+  email_not_confirmed: {
+    title: 'Email не подтверждён',
+    hint: 'Перейдите по ссылке из письма или запросите письмо ещё раз',
+    retryable: false,
+  },
+}
+
 function localizeDetail(detail?: string): string | undefined {
   if (!detail) return undefined
   return KNOWN_DETAILS.find(([pattern]) => pattern.test(detail))?.[1]
@@ -49,6 +65,9 @@ function localizeDetail(detail?: string): string | undefined {
 
 export function describeError(err: unknown): ErrorDescription {
   if (!(err instanceof ApiError)) return GENERIC
+
+  const byCode = err.code ? CODE_DESCRIPTIONS[err.code] : undefined
+  if (byCode) return byCode
 
   switch (err.status) {
     case 0:
@@ -63,12 +82,16 @@ export function describeError(err: unknown): ErrorDescription {
         retryable: false,
         fieldErrors: err.errors,
       }
+    case 401:
+      return { title: 'Сеанс истёк', hint: 'Войдите снова', retryable: false }
     case 404:
       return { title: 'Счёт не найден', retryable: false }
     case 409:
       return { title: 'Счёт занят, повторите', retryable: true }
     case 422:
       return { title: 'Операцию нельзя выполнить', hint: localizeDetail(err.detail), retryable: false }
+    case 429:
+      return { title: 'Слишком много попыток', hint: 'Подождите минуту и повторите', retryable: false }
     default:
       return GENERIC
   }

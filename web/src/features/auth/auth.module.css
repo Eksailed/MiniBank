@@ -1,0 +1,60 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--card);
+}
+
+.heading {
+  font-size: 18px;
+}
+
+.text {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.status {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.links {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.links a {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.menu {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logout {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 14px;
+}

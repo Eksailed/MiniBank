@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
+import { AuthProvider } from '../features/auth'
 import { DirectoryProvider, shouldRetry, type AccountDirectory } from '../features/accounts'
 
 function createQueryClient() {
@@ -19,7 +20,9 @@ export function AppProviders({
 
   return (
     <QueryClientProvider client={client}>
-      <DirectoryProvider directory={directory}>{children}</DirectoryProvider>
+      <AuthProvider>
+        <DirectoryProvider directory={directory}>{children}</DirectoryProvider>
+      </AuthProvider>
     </QueryClientProvider>
   )
 }
