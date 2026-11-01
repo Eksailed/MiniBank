@@ -1,3 +1,4 @@
+using MiniBank.Application.Statements;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MiniBank.Application;
@@ -145,9 +146,9 @@ public class RepositoryTests(PostgresFixture postgres)
         await using var readScope = provider.CreateAsyncScope();
         var ledger = readScope.ServiceProvider.GetRequiredService<ILedgerQuery>();
 
-        var page1 = await ledger.GetEntriesAsync(account.Id, 1, 2, CancellationToken.None);
-        var page2 = await ledger.GetEntriesAsync(account.Id, 2, 2, CancellationToken.None);
-        var page3 = await ledger.GetEntriesAsync(account.Id, 3, 2, CancellationToken.None);
+        var page1 = await ledger.GetEntriesAsync(account.Id, EntryFilter.None, 1, 2, CancellationToken.None);
+        var page2 = await ledger.GetEntriesAsync(account.Id, EntryFilter.None, 2, 2, CancellationToken.None);
+        var page3 = await ledger.GetEntriesAsync(account.Id, EntryFilter.None, 3, 2, CancellationToken.None);
 
         Assert.Equal([2, 2, 1], [page1.Count, page2.Count, page3.Count]);
         var all = page1.Concat(page2).Concat(page3).ToList();

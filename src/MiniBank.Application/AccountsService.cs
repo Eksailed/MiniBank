@@ -1,5 +1,6 @@
 using MiniBank.Application.Abstractions;
 using MiniBank.Application.Limits;
+using MiniBank.Application.Statements;
 using MiniBank.Domain;
 
 namespace MiniBank.Application;
@@ -10,6 +11,7 @@ public sealed class AccountsService(
     ILedgerQuery ledger,
     IUnitOfWork uow,
     LimitPolicy limitPolicy,
+    StatementOptions statements,
     TimeProvider clock)
 {
     public const int MaxAccountsPerUser = 50;
@@ -41,7 +43,7 @@ public sealed class AccountsService(
         ToDto(await FindOwnedAsync(userId, id, ct));
 
     public async Task<IReadOnlyList<EntryDto>> GetEntriesAsync(
-        Guid userId, Guid id, int page, int pageSize, CancellationToken ct)
+        Guid userId, Guid id, EntryFilter filter, int page, int pageSize, CancellationToken ct)
     {
         if (page < 1)
             throw new DomainValidationException("Page must be at least 1.");
@@ -53,10 +55,25 @@ public sealed class AccountsService(
 
         await FindOwnedAsync(userId, id, ct);
 
-        var entries = await ledger.GetEntriesAsync(id, page, pageSize, ct);
+        var entries = await ledger.GetEntriesAsync(id, filter, page, pageSize, ct);
         return entries
             .Select(e => new EntryDto(e.Id, e.TransferId, e.Amount, e.BalanceAfter, e.CreatedAt))
             .ToList();
+    }
+
+    /// <summary>
+    /// Готовит выписку к выгрузке: владение и размер проверяются здесь, до первого байта ответа,
+    /// чтобы слишком большая выписка закончилась обычным 400, а не оборванным файлом.
+    /// </summary>
+    public async Task<(string Currency, IAsyncEnumerable<LedgerEntry> Rows)> OpenStatementAsync(
+        Guid userId, Guid id, EntryFilter filter, CancellationToken ct)
+    {
+        var account = await FindOwnedAsync(userId, id, ct);
+        if (await ledger.CountAsync(id, filter, statements.MaxCsvRows, ct) > statements.MaxCsvRows)
+            throw new DomainValidationException(
+                $"Statement has more than {statements.MaxCsvRows} rows; narrow the period or direction.");
+
+        return (account.Currency, ledger.StreamAsync(id, filter, ct));
     }
 
     public async Task<LimitsDto> GetLimitsAsync(Guid userId, Guid id, CancellationToken ct) =>

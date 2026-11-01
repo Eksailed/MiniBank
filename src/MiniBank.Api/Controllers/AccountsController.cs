@@ -1,6 +1,10 @@
+using System.Globalization;
+using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using MiniBank.Api.Auth;
 using MiniBank.Application;
+using MiniBank.Application.Statements;
+using MiniBank.Domain;
 
 namespace MiniBank.Api.Controllers;
 
@@ -49,6 +53,56 @@ public class AccountsController(AccountsService accounts, TransfersService trans
     [HttpGet("{id:guid}/entries")]
     [ProducesResponseType<IReadOnlyList<EntryDto>>(StatusCodes.Status200OK)]
     public async Task<IReadOnlyList<EntryDto>> Entries(
-        Guid id, CancellationToken ct, [FromQuery] int page = 1, [FromQuery] int pageSize = 50) =>
-        await accounts.GetEntriesAsync(User.GetUserId(), id, page, pageSize, ct);
+        Guid id,
+        CancellationToken ct,
+        [FromQuery] string? from = null,
+        [FromQuery] string? to = null,
+        [FromQuery] string? direction = null,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50) =>
+        await accounts.GetEntriesAsync(User.GetUserId(), id, ParseFilter(from, to, direction), page, pageSize, ct);
+
+    /// <summary>Выписка в CSV (UTF-8 с BOM, разделитель «;»): те же фильтры, без пагинации, пишется потоком.</summary>
+    [HttpGet("{id:guid}/entries.csv")]
+    [Produces("text/csv")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task EntriesCsv(
+        Guid id,
+        CancellationToken ct,
+        [FromQuery] string? from = null,
+        [FromQuery] string? to = null,
+        [FromQuery] string? direction = null)
+    {
+        // Владение, фильтр и потолок строк проверяются до первого байта: ошибка остаётся обычным ответом с кодом.
+        var (currency, rows) = await accounts.OpenStatementAsync(
+            User.GetUserId(), id, ParseFilter(from, to, direction), ct);
+
+        Response.ContentType = "text/csv; charset=utf-8";
+        Response.Headers.ContentDisposition = $"attachment; filename=\"statement-{id}.csv\"";
+        await Response.Body.WriteAsync(Encoding.UTF8.GetPreamble(), ct);
+        await using var writer = new StreamWriter(Response.Body, new UTF8Encoding(false), leaveOpen: true);
+        await StatementCsv.WriteAsync(writer, currency, rows, ct);
+    }
+
+    /// <summary>Даты по ISO 8601; без смещения считаются UTC. Пустое значение — как отсутствие параметра.</summary>
+    private static EntryFilter ParseFilter(string? from, string? to, string? direction) =>
+        new(ParseInstant(from, "from"), ParseInstant(to, "to"), ParseDirection(direction));
+
+    private static DateTimeOffset? ParseInstant(string? value, string name)
+    {
+        if (string.IsNullOrEmpty(value))
+            return null;
+        if (DateTimeOffset.TryParse(
+                value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
+            return parsed;
+        throw new DomainValidationException($"'{name}' must be an ISO 8601 date or date-time.");
+    }
+
+    private static EntryDirection? ParseDirection(string? value) => value?.ToLowerInvariant() switch
+    {
+        null or "" => null,
+        "in" => EntryDirection.In,
+        "out" => EntryDirection.Out,
+        _ => throw new DomainValidationException("'direction' must be 'in' or 'out'.")
+    };
 }

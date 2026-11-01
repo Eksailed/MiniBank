@@ -1,3 +1,4 @@
+using MiniBank.Application.Statements;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MiniBank.Application;
@@ -54,7 +55,7 @@ public class ServicesTests(PostgresFixture postgres)
 
     private static Task<IReadOnlyList<EntryDto>> EntriesAsync(
         ServiceProvider provider, Guid userId, Guid id, int page = 1, int pageSize = 50) =>
-        InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().GetEntriesAsync(userId, id, page, pageSize, default));
+        InScopeAsync(provider, sp => sp.GetRequiredService<AccountsService>().GetEntriesAsync(userId, id, EntryFilter.None, page, pageSize, default));
 
     private static Task<long> CashBalanceAsync(ServiceProvider provider, string currency = "RUB") =>
         InScopeAsync(provider, sp => sp.GetRequiredService<MiniBankDbContext>().Accounts
