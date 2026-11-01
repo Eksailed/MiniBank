@@ -88,12 +88,17 @@ public class AccountsController(AccountsService accounts, TransfersService trans
     private static EntryFilter ParseFilter(string? from, string? to, string? direction) =>
         new(ParseInstant(from, "from"), ParseInstant(to, "to"), ParseDirection(direction));
 
+    // Только ISO 8601: дата, либо дата и время с необязательными долями секунды и смещением (Z, +03:00 или без него — UTC).
+    private static readonly string[] IsoFormats =
+        ["yyyy-MM-dd", "yyyy-MM-ddTHH:mm:ssK", "yyyy-MM-ddTHH:mm:ss.FFFFFFFK"];
+
     private static DateTimeOffset? ParseInstant(string? value, string name)
     {
         if (string.IsNullOrEmpty(value))
             return null;
-        if (DateTimeOffset.TryParse(
-                value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
+        if (DateTimeOffset.TryParseExact(
+                value, IsoFormats, CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
             return parsed;
         throw new DomainValidationException($"'{name}' must be an ISO 8601 date or date-time.");
     }
