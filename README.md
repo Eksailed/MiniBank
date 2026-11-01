@@ -99,7 +99,7 @@ npm run dev
 | `GET /accounts/{id}/entries.csv?from&to&direction` | Выписка в CSV: UTF-8 с BOM, разделитель `;`, те же фильтры, без пагинации | 200 |
 | `GET /health` | Проверка готовности: выполняет запрос к БД; не входит в Swagger | 200, при недоступной БД 503 |
 
-Суммы в API задаются целым числом в минимальных единицах валюты (копейки, центы); в CSV — в основных единицах с точкой и двумя знаками. Даты в фильтрах — ISO 8601, без смещения считаются UTC; `from` включительно, `to` не включительно.
+Суммы в API задаются целым числом в минимальных единицах валюты (копейки, центы); в CSV — в основных единицах с точкой и двумя знаками. Ключ `Idempotency-Key` действует в пределах пользователя: чужой запрос с тем же ключом не пересекается с вашим. Даты в фильтрах — строго ISO 8601 (`yyyy-MM-dd` или с временем), без смещения считаются UTC; `from` включительно, `to` не включительно.
 
 Swagger включён в окружении Development или при настройке `Swagger:Enabled=true` (переменная окружения `Swagger__Enabled`); по умолчанию выключен. В Compose включён; кнопка «Authorize» принимает токен из `POST /auth/login`.
 
@@ -112,7 +112,7 @@ curl -X POST http://localhost:5050/transfers   -H "Authorization: Bearer <ток
 | Код | Когда |
 | --- | --- |
 | 400 | неверный ввод: валюта, сумма, пароль, email, лимиты, период и `direction` в выписке, перевод на тот же счёт, переполнение баланса; нет заголовка `Idempotency-Key` или он некорректен; `invalid_confirmation_token` — токен из письма неверный, просрочен или уже использован; CSV длиннее потолка строк (`Statements:MaxCsvRows`, по умолчанию 50 000) |
-| 401 | нет или недействителен токен; `invalid_credentials` — неверный email или пароль |
+| 401 | нет или недействителен токен (в т.ч. токен валиден, но пользователь уже удалён — `GET /me`); `invalid_credentials` — неверный email или пароль |
 | 403 | `email_not_confirmed` — пароль верный, но email ещё не подтверждён |
 | 404 | счёт не найден или принадлежит другому пользователю (чужие счета неотличимы от несуществующих) |
 | 409 | `email_taken` — email уже зарегистрирован; либо операция не прошла после нескольких автоматических повторов из-за гонки — запрос можно отправить заново с тем же ключом |
@@ -164,12 +164,15 @@ erDiagram
         text email UK
         text password_hash
         text display_name
+        timestamptz email_confirmed_at
         timestamptz created_at
     }
     email_confirmation_tokens {
         uuid id PK
         uuid user_id FK
         text token_hash UK
+        timestamptz expires_at
+        timestamptz used_at
         timestamptz created_at
     }
     accounts {

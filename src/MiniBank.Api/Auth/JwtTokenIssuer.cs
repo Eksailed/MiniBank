@@ -22,6 +22,7 @@ internal sealed class JwtTokenIssuer(JwtOptions options) : IAccessTokenIssuer
             Issuer = options.Issuer,
             Audience = options.Audience,
             IssuedAt = now.UtcDateTime,
+            NotBefore = now.UtcDateTime,
             Expires = expiresAt.UtcDateTime,
             SigningCredentials = _credentials
         });
