@@ -239,9 +239,9 @@ describe('transfer page', () => {
     expect(calls[0].key).toMatch(/^[0-9a-f-]{36}$/)
   })
 
-  it('shows the 422 reason next to the form', async () => {
+  it('shows the 422 reason next to the form in Russian', async () => {
     useAccountHandlers()
-    recordTransfers(() => problem(422, 'Insufficient funds.') as Response)
+    recordTransfers(() => problem(422, `Account ${ID} has insufficient funds.`) as Response)
     const { user, recipient, amount } = await openTransfer()
 
     await user.type(recipient, OTHER)
@@ -250,7 +250,34 @@ describe('transfer page', () => {
 
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent('Операцию нельзя выполнить')
-    expect(alert).toHaveTextContent('Insufficient funds.')
+    expect(alert).toHaveTextContent('Недостаточно средств на счёте')
+    expect(alert).not.toHaveTextContent('insufficient')
+  })
+
+  it('explains a currency mismatch returned by the API as 400', async () => {
+    useAccountHandlers()
+    recordTransfers(() => problem(400, 'Transfer requires accounts and amount in the same currency.') as Response)
+    const { user, recipient, amount } = await openTransfer()
+
+    await user.type(recipient, OTHER)
+    await user.type(amount, '50')
+    await user.click(screen.getByRole('button', { name: 'Перевести' }))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent('Счета в разных валютах')
+  })
+
+  it('reports an unknown recipient next to the recipient field', async () => {
+    useAccountHandlers()
+    recordTransfers(() => problem(404, `Account ${OTHER} was not found.`) as Response)
+    const { user, recipient, amount } = await openTransfer()
+
+    await user.type(recipient, OTHER)
+    await user.type(amount, '50')
+    await user.click(screen.getByRole('button', { name: 'Перевести' }))
+
+    expect(await screen.findByText('Счёт получателя не найден')).toBeInTheDocument()
+    expect(recipient).toBeInvalid()
   })
 
   it('treats a replayed response as success', async () => {

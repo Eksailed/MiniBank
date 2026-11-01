@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
+import { ApiError } from '../../api/errors'
 import type { Account } from '../../api/types'
 import { isGuid } from '../../shared/guid'
 import { moneyErrorText, parseMoney } from '../../shared/money'
@@ -20,6 +21,8 @@ function TransferForm({ account }: { account: Account }) {
   const transfer = useTransfer()
   const { ids } = useAccountDirectory()
   const navigate = useNavigate()
+  // Счёт-источник уже загружен, поэтому 404 при переводе — это получатель.
+  const recipientNotFound = transfer.error instanceof ApiError && transfer.error.status === 404
 
   function edited() {
     setRecipientError(undefined)
@@ -71,7 +74,7 @@ function TransferForm({ account }: { account: Account }) {
         autoComplete="off"
         spellCheck={false}
         value={recipient}
-        error={recipientError}
+        error={recipientError ?? (recipientNotFound ? 'Счёт получателя не найден' : undefined)}
         onChange={(e) => {
           setRecipient(e.target.value)
           edited()
@@ -95,7 +98,7 @@ function TransferForm({ account }: { account: Account }) {
           edited()
         }}
       />
-      {transfer.isError && <ErrorNotice error={transfer.error} onRetry={submit} />}
+      {transfer.isError && !recipientNotFound && <ErrorNotice error={transfer.error} onRetry={submit} />}
       <Button type="submit" pending={transfer.isPending}>
         Перевести
       </Button>

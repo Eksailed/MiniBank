@@ -33,6 +33,20 @@ const GENERIC: ErrorDescription = {
   retryable: false,
 }
 
+/** Тексты ProblemDetails бэкенда английские и могут содержать ID счетов — показываем только известные, по-русски. */
+const KNOWN_DETAILS: Array<[RegExp, string]> = [
+  [/insufficient funds/i, 'Недостаточно средств на счёте'],
+  [/same currency|holds \w+, not \w+/i, 'Счета в разных валютах: перевод возможен только в валюте счёта'],
+  [/is blocked/i, 'Счёт заблокирован'],
+  [/system accounts/i, 'Операции с системным счётом недоступны'],
+  [/balance overflow/i, 'Сумма слишком велика для счёта'],
+]
+
+function localizeDetail(detail?: string): string | undefined {
+  if (!detail) return undefined
+  return KNOWN_DETAILS.find(([pattern]) => pattern.test(detail))?.[1]
+}
+
 export function describeError(err: unknown): ErrorDescription {
   if (!(err instanceof ApiError)) return GENERIC
 
@@ -45,7 +59,7 @@ export function describeError(err: unknown): ErrorDescription {
     case 400:
       return {
         title: 'Проверьте введённые данные',
-        hint: err.detail,
+        hint: localizeDetail(err.detail),
         retryable: false,
         fieldErrors: err.errors,
       }
@@ -54,7 +68,7 @@ export function describeError(err: unknown): ErrorDescription {
     case 409:
       return { title: 'Счёт занят, повторите', retryable: true }
     case 422:
-      return { title: 'Операцию нельзя выполнить', hint: err.detail, retryable: false }
+      return { title: 'Операцию нельзя выполнить', hint: localizeDetail(err.detail), retryable: false }
     default:
       return GENERIC
   }

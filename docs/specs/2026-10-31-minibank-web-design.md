@@ -10,7 +10,7 @@
 
 ## Стек
 
-- React + TypeScript + Vite, отдельное SPA в `web/`. Нужен Node.js 20+.
+- React + TypeScript + Vite, отдельное SPA в `web/`. Нужен Node.js 22.22+ (или 24): этого требуют react-router, vitest, jsdom.
 - React Router (маршрутизация), TanStack Query (запросы и кэш).
 - Стили: CSS-переменные и CSS Modules. UI-кит не используется.
 - Типы DTO генерируются из `swagger.json` бэкенда (`openapi-typescript`).

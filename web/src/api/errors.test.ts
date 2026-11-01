@@ -23,11 +23,31 @@ describe('describeError', () => {
     expect(d.retryable).toBe(true)
   })
 
-  it('maps 422 to a business error carrying the server detail as hint', () => {
-    const d = describeError(new ApiError(422, { detail: 'Insufficient funds.' }))
+  it('maps 422 insufficient funds to a Russian hint without the account id', () => {
+    const d = describeError(new ApiError(422, { detail: 'Account 3f2b1c0e-0000-4000-8000-000000000001 has insufficient funds.' }))
     expect(d.title).toBe('Операцию нельзя выполнить')
-    expect(d.hint).toBe('Insufficient funds.')
+    expect(d.hint).toBe('Недостаточно средств на счёте')
+    expect(JSON.stringify(d)).not.toContain('3f2b1c0e')
     expect(d.retryable).toBe(false)
+  })
+
+  it('maps 400 currency mismatch to a Russian hint', () => {
+    const d = describeError(new ApiError(400, { detail: 'Transfer requires accounts and amount in the same currency.' }))
+    expect(d.title).toBe('Проверьте введённые данные')
+    expect(d.hint).toBe('Счета в разных валютах: перевод возможен только в валюте счёта')
+  })
+
+  it.each([
+    [422, 'Account 3f2b1c0e-0000-4000-8000-000000000001 is blocked.', 'Счёт заблокирован'],
+    [422, 'System accounts cannot take part in client transfers.', 'Операции с системным счётом недоступны'],
+    [400, 'Balance overflow.', 'Сумма слишком велика для счёта'],
+  ])('maps %i "%s" to a Russian hint', (status, detail, hint) => {
+    expect(describeError(new ApiError(status, { detail })).hint).toBe(hint)
+  })
+
+  it('drops an unknown English server detail instead of showing it', () => {
+    const d = describeError(new ApiError(422, { detail: 'Something unexpected happened.' }))
+    expect(d.hint).toBeUndefined()
   })
 
   it('maps 500 to a generic text without server detail', () => {

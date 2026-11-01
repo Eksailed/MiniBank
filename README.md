@@ -38,7 +38,7 @@ dotnet test
 
 ## Web
 
-Веб-клиент — React + TypeScript + Vite, лежит в `web/`. Нужен Node.js 20+.
+Веб-клиент — React + TypeScript + Vite, лежит в `web/`. Нужен Node.js 22.22+ (или 24).
 
 ```bash
 cd web
