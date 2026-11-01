@@ -4,6 +4,7 @@ import { Link } from 'react-router'
 import { api } from '../../api/client'
 import { ApiError } from '../../api/errors'
 import { Button, ErrorNotice, TextField } from '../../shared/ui'
+import { ResendConfirmation } from './ResendConfirmation'
 import { isEmail, MIN_PASSWORD_LENGTH } from './validation'
 import styles from './auth.module.css'
 
@@ -39,6 +40,7 @@ export function RegisterPage() {
         <p className={styles.text}>
           Мы отправили письмо на {email.trim()}. Перейдите по ссылке из письма, чтобы подтвердить адрес.
         </p>
+        <ResendConfirmation email={email.trim()} />
         <Link to="/login">Перейти ко входу</Link>
       </div>
     )
@@ -70,7 +72,7 @@ export function RegisterPage() {
         <TextField
           label="Имя"
           autoComplete="name"
-          maxLength={200}
+          maxLength={100}
           value={displayName}
           error={errors.displayName}
           onChange={(e) => setDisplayName(e.target.value)}

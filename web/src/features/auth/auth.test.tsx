@@ -190,6 +190,34 @@ describe('registration', () => {
     expect(calls).toEqual([{ email: 'alice@example.com', password: 'secret-pass-1', displayName: 'Alice' }])
   })
 
+  it('lets the user resend the letter right after registration', async () => {
+    const resent: unknown[] = []
+    server.use(
+      http.post('/api/auth/register', () => new HttpResponse(null, { status: 202 })),
+      http.post('/api/auth/resend-confirmation', async ({ request }) => {
+        resent.push(await request.json())
+        return new HttpResponse(null, { status: 202 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderApp('/register', { token: null })
+
+    await user.type(screen.getByLabelText('Email'), 'alice@example.com')
+    await user.type(screen.getByLabelText('Пароль'), 'secret-pass-1')
+    await user.type(screen.getByLabelText('Имя'), 'Alice')
+    await user.click(screen.getByRole('button', { name: 'Зарегистрироваться' }))
+    await user.click(await screen.findByRole('button', { name: 'Отправить письмо ещё раз' }))
+
+    expect(await screen.findByText('Письмо отправлено')).toBeInTheDocument()
+    expect(resent).toEqual([{ email: 'alice@example.com' }])
+  })
+
+  it('limits the name to what the server accepts', () => {
+    renderApp('/register', { token: null })
+
+    expect(screen.getByLabelText('Имя')).toHaveAttribute('maxlength', '100')
+  })
+
   it('shows "email taken" next to the email field', async () => {
     server.use(http.post('/api/auth/register', () => problem(409, 'email_taken')))
     const user = userEvent.setup()
