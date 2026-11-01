@@ -1,0 +1,86 @@
+# MiniBank: дизайн поставки (этап 3)
+
+Дата: 2026-11-01
+
+## Цель
+
+Сделать репозиторий проверяемым одной командой и одним взглядом на GitHub: `docker compose up` поднимает весь стек (БД, API, веб), CI на каждый push и PR доказывает, что тесты проходят, образы собираются, а собранный стек отвечает. Новых функций нет. Документ продолжает [ядро](2026-10-31-minibank-core-design.md), [корректность](2026-10-31-minibank-correctness-design.md) и [веб](2026-10-31-minibank-web-design.md); API, модель данных и клиент не меняются, кроме двух мелких добавок ниже.
+
+## Что решается
+
+Сейчас:
+
+- Compose поднимает только PostgreSQL; чтобы увидеть приложение, нужны .NET SDK 9, Node.js и три терминала.
+- Нет CI: зелёные тесты видны только локально.
+- Нет способа узнать, что API жив и достаёт до БД.
+- Swagger виден только в окружении Development.
+
+## Изменения в API
+
+### `GET /health`
+
+Проверка готовности: 200 `Healthy`, если выполняется запрос к БД; 503 `Unhealthy`, если БД недоступна. Без авторизации, не попадает в Swagger. Реализация: `AddHealthChecks().AddDbContextCheck<MiniBankDbContext>()` (пакет `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore`) и `app.MapHealthChecks("/health")`.
+
+### Настройка `Swagger:Enabled`
+
+Swagger и Swagger UI включаются, если окружение Development **или** `Swagger:Enabled = true`. По умолчанию `false`. В Compose включено, окружение остаётся Production.
+
+## Контейнеры
+
+### API (`src/MiniBank.Api/Dockerfile`)
+
+- Две стадии: `mcr.microsoft.com/dotnet/sdk:9.0` (restore, publish) и `mcr.microsoft.com/dotnet/aspnet:9.0` (запуск).
+- Контекст сборки — корень репозитория (нужны `Directory.Build.props` и все проекты `src/`). Рядом `.dockerignore`, исключающий `bin/`, `obj/`, `web/`, `tests/`, `.git`, `docs/`.
+- Запуск не от root (пользователь `app` из образа), слушает 8080.
+- Конфигурация только через переменные окружения: `ConnectionStrings__MiniBank`, `Database__MigrateOnStartup=true`, `Swagger__Enabled=true`.
+
+### Веб (`web/Dockerfile`, `web/nginx.conf`)
+
+- Стадия сборки `node:24-alpine`: `npm ci`, `npm run build`. Стадия запуска `nginx:alpine` с `dist`.
+- `nginx.conf`: `location /api/` проксирует в `http://api:8080/` (префикс снимается, как в прокси Vite); остальное — `try_files $uri /index.html` (фолбэк SPA); заголовки кеша: `index.html` без кеша, `assets/` — на год (имена с хешем).
+- Healthcheck контейнера: `wget -qO- http://localhost/api/health` — проверяет весь путь nginx → API → БД (в образе ASP.NET нет curl).
+- Рядом `web/.dockerignore` (`node_modules`, `dist`).
+
+### Compose (`docker-compose.yml`)
+
+| Сервис | Образ | Порт на хосте | Зависит от |
+|---|---|---|---|
+| `postgres` | `postgres:17` (как сейчас) | 5432 | — |
+| `api` | сборка `src/MiniBank.Api/Dockerfile` | 5050 → 8080 | `postgres` (healthy) |
+| `web` | сборка `web/Dockerfile` | 8080 → 80 | `api` (started) |
+
+- `docker compose up --build` — весь стек; приложение на <http://localhost:8080>, Swagger на <http://localhost:5050/swagger>.
+- Для разработки: `docker compose up -d postgres`, затем `dotnet run` и `npm run dev` (порт 5050 свободен, строка подключения прежняя).
+- Пароль БД остаётся учебным (`postgres`), тома `minibank-data` сохраняются между запусками.
+
+## CI (`.github/workflows/ci.yml`)
+
+Триггеры: `push` в `main` и `pull_request`. Права `contents: read`. `concurrency` с отменой устаревших запусков той же ветки. Три независимых job-а на `ubuntu-latest`:
+
+1. **backend** — `actions/setup-dotnet` (9.0.x, кеш NuGet), `dotnet test --configuration Release`. Интеграционные тесты поднимают PostgreSQL через Testcontainers на Docker раннера.
+2. **web** — `actions/setup-node` (24, кеш npm по `web/package-lock.json`), в `web/`: `npm ci`, `npm test -- --run`, `npm run build`.
+3. **stack** — `docker compose up -d --build --wait`; затем проверки через веб-порт: `GET /api/health` → 200, `POST /api/accounts` (RUB) → 201 и `GET /` отдаёт HTML приложения; при падении шага — `docker compose logs`; в конце `docker compose down -v`.
+
+Версии действий закрепляются мажорными тегами (`@v4`/`@v5`). Публикации образов нет. Бейдж статуса `ci.yml` в README.
+
+## Документация
+
+README: бейдж CI; быстрый старт — одна команда через Compose; режим разработки; описание `/health` и `Swagger:Enabled`; раздел «CI»; статус — этап 3 готов, список этапов обновлён. Раздел «Структура» дополняется Dockerfile и `.github/`. Скриншоты не входят в этап (добавляются владельцем после запуска).
+
+## Тесты
+
+- Интеграционные тесты API (`WebApplicationFactory` + Testcontainers, как существующие): `/health` отвечает 200 при живой БД; 503 при недоступной БД (фабрика с неверной строкой подключения); `/swagger/v1/swagger.json` недоступен (404) без `Swagger:Enabled` в Production и доступен (200) с `Swagger:Enabled=true`.
+- Контейнеры и workflow тестами не покрываются: их проверяет job `stack`, а перед публикацией — тот же сценарий локально (`docker compose up -d --build --wait`, те же запросы).
+
+## Вне этапа
+
+- Публикация образов (GHCR), деплой, HTTPS/TLS.
+- Dependabot, линтеры и форматтеры, покрытие кода.
+- Изменения клиента, API-контрактов и схемы БД.
+- Авторизация (этап 4).
+
+## Риски
+
+- Первый запуск workflow возможен только на GitHub: локально проверяются Dockerfile, Compose и шаги дымовой проверки, но не сам YAML Actions. Ошибка в нём всплывёт в первом запуске и чинится отдельным коммитом.
+- Сборка `web` в Docker требует Node той же версии, что в README (22.22+/24); используется 24.
+- Порты 5432, 5050, 8080 на хосте должны быть свободны; конфликты описываются в README.
