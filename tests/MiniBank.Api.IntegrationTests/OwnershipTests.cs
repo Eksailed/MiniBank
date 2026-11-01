@@ -201,16 +201,21 @@ public class OwnershipTests(PostgresFixture postgres)
         var bobs = await OpenAsync(bob);
         await DepositAsync(alice, legacy.Id, 1000);
         await DepositAsync(bob, bobs.Id, 1000);
-        await ExecuteAsync(factory.ConnectionString, "ALTER TABLE accounts DROP CONSTRAINT ck_accounts_owner_required");
-        await ExecuteAsync(factory.ConnectionString, $"UPDATE accounts SET user_id = NULL WHERE id = '{legacy.Id}'");
+        // Как у счёта, открытого до миграций: ни владельца, ни лимитов; ограничения базы при этом остаются на месте.
+        await ExecuteAsync(factory.ConnectionString,
+            $"UPDATE accounts SET user_id = NULL, per_operation_limit = NULL, daily_limit = NULL WHERE id = '{legacy.Id}'");
 
         var debit = await alice.PostWithKeyAsync("/transfers",
             new { fromAccountId = legacy.Id, toAccountId = bobs.Id, amount = 100, currency = "RUB" });
         var credit = await bob.PostWithKeyAsync("/transfers",
             new { fromAccountId = bobs.Id, toAccountId = legacy.Id, amount = 100, currency = "RUB" });
         var list = await alice.GetFromJsonAsync<List<AccountDto>>("/accounts");
+        var read = await alice.GetAsync($"/accounts/{legacy.Id}");
+        var deposit = await alice.PostWithKeyAsync($"/accounts/{legacy.Id}/deposit", new { amount = 100, currency = "RUB" });
 
         Assert.Equal(HttpStatusCode.NotFound, debit.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, deposit.StatusCode);
         Assert.Equal(HttpStatusCode.OK, credit.StatusCode);
         Assert.Empty(list!);
     }

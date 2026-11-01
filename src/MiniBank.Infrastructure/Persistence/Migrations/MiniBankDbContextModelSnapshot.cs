@@ -85,10 +85,6 @@ namespace MiniBank.Infrastructure.Persistence.Migrations
 
                             t.HasCheckConstraint("ck_accounts_daily_limit_positive", "daily_limit > 0");
 
-                            t.HasCheckConstraint("ck_accounts_limits_required", "is_system OR (per_operation_limit IS NOT NULL AND daily_limit IS NOT NULL)");
-
-                            t.HasCheckConstraint("ck_accounts_owner_required", "is_system OR user_id IS NOT NULL");
-
                             t.HasCheckConstraint("ck_accounts_per_operation_limit_positive", "per_operation_limit > 0");
                         });
 

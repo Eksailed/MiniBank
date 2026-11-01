@@ -13,13 +13,8 @@ internal sealed class AccountConfiguration : IEntityTypeConfiguration<Account>
         builder.ToTable("accounts", table =>
         {
             table.HasCheckConstraint("ck_accounts_balance_non_negative", "balance >= 0 OR is_system");
-            // В миграции добавляется как NOT VALID: старые счета без владельца остаются, новые — нет.
-            table.HasCheckConstraint("ck_accounts_owner_required", "is_system OR user_id IS NOT NULL");
             table.HasCheckConstraint("ck_accounts_per_operation_limit_positive", "per_operation_limit > 0");
             table.HasCheckConstraint("ck_accounts_daily_limit_positive", "daily_limit > 0");
-            // Тоже NOT VALID в миграции: счета, открытые до лимитов, остаются без них, новые — нет.
-            table.HasCheckConstraint("ck_accounts_limits_required",
-                "is_system OR (per_operation_limit IS NOT NULL AND daily_limit IS NOT NULL)");
         });
 
         builder.HasKey(a => a.Id);
