@@ -1,4 +1,6 @@
 .screen {
+  /* Страница без карточек: поля — белые плашки, иначе серый --field сливается с фоном. */
+  --field: var(--card);
   display: flex;
   flex-direction: column;
   gap: 20px;
