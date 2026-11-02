@@ -11,6 +11,7 @@ public class MiniBankDbContext(DbContextOptions<MiniBankDbContext> options) : Db
     public DbSet<IdempotencyKeyRecord> IdempotencyKeys => Set<IdempotencyKeyRecord>();
     public DbSet<User> Users => Set<User>();
     public DbSet<EmailConfirmationToken> EmailConfirmationTokens => Set<EmailConfirmationToken>();
+    public DbSet<PasswordResetToken> PasswordResetTokens => Set<PasswordResetToken>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

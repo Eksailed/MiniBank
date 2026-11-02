@@ -38,7 +38,25 @@ internal sealed class UserRepository(MiniBankDbContext db) : IUserRepository
             .Where(t => t.UserId == userId && t.UsedAt == null)
             .ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, now), ct);
 
+    public Task<PasswordResetToken?> FindResetTokenByHashAsync(string hash, CancellationToken ct) =>
+        db.PasswordResetTokens
+            .FromSqlRaw("SELECT * FROM password_reset_tokens WHERE token_hash = {0} FOR UPDATE", hash)
+            .FirstOrDefaultAsync(ct);
+
+    public Task<PasswordResetToken?> FindLatestResetTokenAsync(Guid userId, CancellationToken ct) =>
+        db.PasswordResetTokens
+            .Where(t => t.UserId == userId)
+            .OrderByDescending(t => t.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+    public Task InvalidateOpenResetTokensAsync(Guid userId, DateTimeOffset now, CancellationToken ct) =>
+        db.PasswordResetTokens
+            .Where(t => t.UserId == userId && t.UsedAt == null)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.UsedAt, now), ct);
+
     public void Add(User user) => db.Users.Add(user);
 
     public void Add(EmailConfirmationToken token) => db.EmailConfirmationTokens.Add(token);
+
+    public void Add(PasswordResetToken token) => db.PasswordResetTokens.Add(token);
 }

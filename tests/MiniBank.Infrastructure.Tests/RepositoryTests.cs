@@ -157,4 +157,105 @@ public class RepositoryTests(PostgresFixture postgres)
         Assert.Equal(Now, all[4].CreatedAt);
         Assert.All(all, e => Assert.Equal(account.Id, e.AccountId));
     }
+
+    [Fact]
+    public async Task ResetToken_RoundTripsAndIsFoundByHash()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var userId = await SeedUserAsync(provider);
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            scope.ServiceProvider.GetRequiredService<IUserRepository>().Add(PasswordResetToken.Create(userId, "h1", Now));
+            await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var readScope = provider.CreateAsyncScope();
+        var repo = readScope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var uow = readScope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        var found = await uow.ExecuteInTransactionAsync(ct => repo.FindResetTokenByHashAsync("h1", ct), CancellationToken.None);
+
+        Assert.NotNull(found);
+        Assert.Equal(userId, found.UserId);
+        Assert.Equal(Now.AddHours(1), found.ExpiresAt);
+        Assert.Null(await uow.ExecuteInTransactionAsync(ct => repo.FindResetTokenByHashAsync("nope", ct), CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task FindLatestResetToken_ReturnsNewest()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var userId = await SeedUserAsync(provider);
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var repo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+            repo.Add(PasswordResetToken.Create(userId, "old", Now));
+            repo.Add(PasswordResetToken.Create(userId, "new", Now.AddMinutes(5)));
+            await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var readScope = provider.CreateAsyncScope();
+        var latest = await readScope.ServiceProvider.GetRequiredService<IUserRepository>()
+            .FindLatestResetTokenAsync(userId, CancellationToken.None);
+
+        Assert.NotNull(latest);
+        Assert.Equal(Now.AddMinutes(5), latest.CreatedAt);
+    }
+
+    [Fact]
+    public async Task InvalidateOpenResetTokens_MarksOnlyOpenTokensOfThatUser()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var userId = await SeedUserAsync(provider);
+        Guid otherId;
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<MiniBankDbContext>();
+            var other = User.Register("other@b.c", "hash", "Other", Now);
+            db.Users.Add(other);
+            otherId = other.Id;
+            var repo = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+            var used = PasswordResetToken.Create(userId, "used", Now);
+            used.MarkUsed(Now.AddMinutes(1));
+            repo.Add(used);
+            repo.Add(PasswordResetToken.Create(userId, "open", Now));
+            repo.Add(PasswordResetToken.Create(otherId, "foreign", Now));
+            await db.SaveChangesAsync();
+        }
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IUserRepository>()
+                .InvalidateOpenResetTokensAsync(userId, Now.AddMinutes(10), CancellationToken.None);
+        }
+
+        await using var readScope = provider.CreateAsyncScope();
+        var tokens = await readScope.ServiceProvider.GetRequiredService<MiniBankDbContext>()
+            .PasswordResetTokens.AsNoTracking().ToDictionaryAsync(t => t.TokenHash);
+        Assert.Equal(Now.AddMinutes(1), tokens["used"].UsedAt);
+        Assert.Equal(Now.AddMinutes(10), tokens["open"].UsedAt);
+        Assert.Null(tokens["foreign"].UsedAt);
+    }
+
+    [Fact]
+    public async Task User_PasswordChangedAt_IsPersisted()
+    {
+        await using var provider = await MigratedProviderAsync();
+        var userId = await SeedUserAsync(provider);
+
+        await using (var scope = provider.CreateAsyncScope())
+        {
+            var user = await scope.ServiceProvider.GetRequiredService<IUserRepository>().FindByIdAsync(userId, CancellationToken.None);
+            Assert.Null(user!.PasswordChangedAt);
+            user.ChangePassword("new-hash", Now);
+            await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().SaveChangesAsync(CancellationToken.None);
+        }
+
+        await using var readScope = provider.CreateAsyncScope();
+        var loaded = await readScope.ServiceProvider.GetRequiredService<MiniBankDbContext>()
+            .Users.AsNoTracking().SingleAsync(u => u.Id == userId);
+        Assert.Equal(Now, loaded.PasswordChangedAt);
+        Assert.Equal("new-hash", loaded.PasswordHash);
+    }
 }

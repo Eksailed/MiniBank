@@ -271,4 +271,57 @@ public class SchemaTests(PostgresFixture postgres)
         Assert.Equal(Now.AddMinutes(1), loaded.EmailConfirmedAt);
         Assert.Equal(Now, loaded.CreatedAt);
     }
+
+    [Fact]
+    public async Task PasswordResetTokens_DuplicateHash_ViolatesUniqueIndex()
+    {
+        var (_, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+        var user = User.Register("a@b.c", "hash", "A", Now);
+        context.Users.Add(user);
+        context.PasswordResetTokens.Add(PasswordResetToken.Create(user.Id, "same", Now));
+        await context.SaveChangesAsync();
+
+        context.PasswordResetTokens.Add(PasswordResetToken.Create(user.Id, "same", Now));
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => context.SaveChangesAsync());
+
+        var pg = Assert.IsType<PostgresException>(ex.InnerException);
+        Assert.Equal("23505", pg.SqlState);
+        Assert.Equal("ix_password_reset_tokens_token_hash", pg.ConstraintName);
+    }
+
+    [Fact]
+    public async Task DeletingUser_CascadesToResetTokens()
+    {
+        var (connectionString, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+        var user = User.Register("a@b.c", "hash", "A", Now);
+        context.Users.Add(user);
+        context.PasswordResetTokens.Add(PasswordResetToken.Create(user.Id, "h1", Now));
+        await context.SaveChangesAsync();
+
+        await ExecuteAsync(connectionString, $"DELETE FROM users WHERE id = '{user.Id}'");
+
+        Assert.Equal(0, await context.PasswordResetTokens.CountAsync());
+    }
+
+    [Fact]
+    public async Task Users_PasswordChangedAt_IsNullableColumn()
+    {
+        var (connectionString, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+
+        var nullable = await ScalarAsync(connectionString,
+            "SELECT is_nullable FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'password_changed_at'");
+
+        Assert.Equal("YES", nullable);
+    }
+
+    private static async Task<object?> ScalarAsync(string connectionString, string sql)
+    {
+        await using var connection = new NpgsqlConnection(connectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand(sql, connection);
+        return await command.ExecuteScalarAsync();
+    }
 }

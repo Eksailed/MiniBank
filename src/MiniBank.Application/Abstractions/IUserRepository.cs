@@ -22,7 +22,17 @@ public interface IUserRepository
     /// <summary>Помечает использованными все неиспользованные токены пользователя.</summary>
     Task InvalidateOpenTokensAsync(Guid userId, DateTimeOffset now, CancellationToken ct);
 
+    /// <summary>Читает токен сброса с блокировкой строки: параллельный сброс одним токеном выстраивается в очередь. Вызывать в транзакции.</summary>
+    Task<PasswordResetToken?> FindResetTokenByHashAsync(string hash, CancellationToken ct);
+
+    Task<PasswordResetToken?> FindLatestResetTokenAsync(Guid userId, CancellationToken ct);
+
+    /// <summary>Помечает использованными все неиспользованные токены сброса пользователя.</summary>
+    Task InvalidateOpenResetTokensAsync(Guid userId, DateTimeOffset now, CancellationToken ct);
+
     void Add(User user);
 
     void Add(EmailConfirmationToken token);
+
+    void Add(PasswordResetToken token);
 }
