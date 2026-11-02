@@ -15,6 +15,7 @@ public static class ExceptionMapper
             or PerOperationLimitExceededException or DailyLimitExceededException
             => StatusCodes.Status422UnprocessableEntity,
         AccountNotFoundException => StatusCodes.Status404NotFound,
+        NotificationsUnavailableException => StatusCodes.Status503ServiceUnavailable,
         ConcurrencyConflictException or EmailTakenException => StatusCodes.Status409Conflict,
         _ => StatusCodes.Status500InternalServerError
     };
@@ -30,6 +31,7 @@ public static class ExceptionMapper
         InvalidResetTokenException => "invalid_reset_token",
         InvalidCredentialsException => "invalid_credentials",
         EmailNotConfirmedException => "email_not_confirmed",
+        NotificationsUnavailableException => "notifications_unavailable",
         _ => null
     };
 }

@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace MiniBank.Api;
 
 public sealed record CreateAccountRequest(string Currency);
@@ -22,3 +24,13 @@ public sealed record ResetPasswordRequest(string? Token, string? NewPassword);
 public sealed record LoginRequest(string? Email, string? Password);
 
 public sealed record LoginResponse(string AccessToken, DateTimeOffset ExpiresAt);
+
+/// <summary>Ровно четыре булевых поля: отсутствующее, null и лишнее поле дают 400.</summary>
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed record UpdateNotificationSettingsRequest
+{
+    public required bool Enabled { get; init; }
+    public required bool OnTransferSent { get; init; }
+    public required bool OnTransferReceived { get; init; }
+    public required bool OnDeposit { get; init; }
+}

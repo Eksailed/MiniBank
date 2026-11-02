@@ -68,6 +68,10 @@ services:
       Web__BaseUrl: "http://localhost:8080"
       # nginx приходит из сети Compose (172.16.0.0/12): только от него принимается X-Forwarded-For для лимита запросов.
       ForwardedHeaders__TrustedNetworks__0: "172.16.0.0/12"
+      # Внутренний API сервиса уведомлений (профиль telegram). Без запущенного сервиса /me/notifications отвечает 503,
+      # остальной API не затрагивается. Секрет по умолчанию публичен: в любой другой среде задайте свой через NOTIFICATIONS_SECRET.
+      Notifications__BaseUrl: "http://notifications:8080"
+      Notifications__InternalSecret: "${NOTIFICATIONS_SECRET:-local-demo-only-internal-secret}"
     ports:
       # Только с этого компьютера: через опубликованный порт X-Forwarded-For приходит из доверенной сети Docker,
       # и его подделкой можно было бы обойти лимит запросов. Из внешнего мира API доступен только через nginx.
@@ -81,9 +85,13 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Потребитель событий. Таблицы лежат в схеме notifications той же базы minibank (отдельная история миграций),
-  # поэтому отдельная база и скрипт инициализации не нужны.
+  # Потребитель событий и бот Telegram. Таблицы лежат в схеме notifications той же базы minibank (отдельная история миграций),
+  # поэтому отдельная база и скрипт инициализации не нужны. Нужен настоящий токен бота (@BotFather), поэтому сервис
+  # в профиле telegram: `docker compose up` его не поднимает, а `docker compose --profile telegram up` без
+  # TELEGRAM_BOT_TOKEN и TELEGRAM_BOT_USERNAME завершится ошибкой старта сервиса (Compose проверяет переменные всех сервисов,
+  # поэтому ${VAR:?} здесь нельзя).
   notifications:
+    profiles: ["telegram"]
     build:
       context: .
       dockerfile: src/MiniBank.Notifications/Dockerfile
@@ -93,6 +101,9 @@ services:
       RabbitMq__Host: rabbitmq
       RabbitMq__User: "${RABBITMQ_USER:-minibank}"
       RabbitMq__Password: "${RABBITMQ_PASSWORD:-minibank-local-only}"
+      Telegram__BotToken: "${TELEGRAM_BOT_TOKEN:-}"
+      Telegram__BotUsername: "${TELEGRAM_BOT_USERNAME:-}"
+      Notifications__InternalSecret: "${NOTIFICATIONS_SECRET:-local-demo-only-internal-secret}"
     depends_on:
       postgres:
         condition: service_healthy

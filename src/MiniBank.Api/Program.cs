@@ -13,6 +13,7 @@ using MiniBank.Application.Abstractions;
 using MiniBank.Application.Limits;
 using MiniBank.Application.Statements;
 using MiniBank.Infrastructure.Events;
+using MiniBank.Infrastructure.Notifications;
 using MiniBank.Infrastructure.Persistence;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -48,6 +49,7 @@ builder.Services.AddApplication(
     builder.Configuration.GetValue("Statements:MaxCsvRows", StatementCsv.MaxRows));
 builder.Services.AddInfrastructure(connectionString, builder.Configuration);
 builder.Services.AddOutboxPublisher(builder.Configuration);
+builder.Services.AddNotificationsGateway(builder.Configuration);
 
 builder.Services.AddSingleton(jwt);
 builder.Services.AddSingleton<IAccessTokenIssuer, JwtTokenIssuer>();

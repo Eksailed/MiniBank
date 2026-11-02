@@ -28,3 +28,6 @@ public sealed class UniqueViolationException(string constraintName) : Exception(
 {
     public string ConstraintName { get; } = constraintName;
 }
+
+/// <summary>Сервис уведомлений недоступен или не настроен; остальной API при этом работает.</summary>
+public sealed class NotificationsUnavailableException() : Exception("The notifications service is unavailable.");
