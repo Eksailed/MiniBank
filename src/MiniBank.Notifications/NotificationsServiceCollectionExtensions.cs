@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MiniBank.Messaging;
+using MiniBank.Notifications.Telegram;
 
 namespace MiniBank.Notifications;
 
@@ -18,6 +19,17 @@ public static class NotificationsServiceCollectionExtensions
         services.AddSingleton(RabbitMqOptions.Load(configuration));
         services.AddSingleton<EventHandler>();
         services.AddHostedService<EventConsumer>();
+        return services;
+    }
+
+    /// <summary>Бот, отправитель доставок и внутренний API; токен, имя бота и секрет обязательны.</summary>
+    public static IServiceCollection AddTelegram(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddSingleton(TelegramOptions.Load(configuration));
+        services.AddSingleton(TimeProvider.System);
+        services.AddHttpClient<ITelegramClient, TelegramClient>(c => c.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddSingleton<DeliveryBatchProcessor>();
+        services.AddHostedService<DeliverySender>();
         return services;
     }
 
