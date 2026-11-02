@@ -36,6 +36,24 @@ public class AuthController(AuthService auth) : ControllerBase
         return Accepted();
     }
 
+    /// <summary>Всегда 202: ответ не выдаёт, зарегистрирован ли email.</summary>
+    [HttpPost("forgot-password")]
+    [ProducesResponseType(StatusCodes.Status202Accepted)]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken ct)
+    {
+        await auth.ForgotPasswordAsync(request.Email, ct);
+        return Accepted();
+    }
+
+    [HttpPost("reset-password")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken ct)
+    {
+        await auth.ResetPasswordAsync(request.Token, request.NewPassword, ct);
+        return NoContent();
+    }
+
     [HttpPost("login")]
     [ProducesResponseType<LoginResponse>(StatusCodes.Status200OK)]
     public async Task<LoginResponse> Login(LoginRequest request, CancellationToken ct)

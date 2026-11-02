@@ -168,6 +168,99 @@ public class AuthEndpointsTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task ForgotPassword_AlwaysAccepted_ForKnownUnknownAndInvalidEmail()
+    {
+        await using var factory = await ApiFactory.CreateAsync(postgres);
+        var known = await TestUsers.RegisterAndConfirmAsync(factory);
+        var sentBefore = factory.Email.Sent.Count;
+        using var client = factory.CreateClient();
+
+        foreach (var email in new[] { known, "nobody@example.com", "not-an-email", "" })
+        {
+            var response = await client.PostAsJsonAsync("/auth/forgot-password", new { email });
+            Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
+        }
+        var nullEmail = await client.PostAsJsonAsync("/auth/forgot-password", new { email = (string?)null });
+        Assert.Equal(HttpStatusCode.Accepted, nullEmail.StatusCode);
+
+        var mail = Assert.Single(factory.Email.Sent.Skip(sentBefore));
+        Assert.Equal(known, mail.To);
+    }
+
+    [Fact]
+    public async Task ResetPassword_FullFlow_OldPasswordFails_NewPasswordLogsIn()
+    {
+        await using var factory = await ApiFactory.CreateAsync(postgres);
+        var email = await TestUsers.RegisterAndConfirmAsync(factory);
+        using var client = factory.CreateClient();
+        await client.PostAsJsonAsync("/auth/forgot-password", new { email });
+
+        var reset = await client.PostAsJsonAsync("/auth/reset-password",
+            new { token = factory.Email.LastResetToken(email), newPassword = "brand-new-pass-2" });
+
+        Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
+        var old = await client.PostAsJsonAsync("/auth/login", new { email, password = Password });
+        Assert.Equal(HttpStatusCode.Unauthorized, old.StatusCode);
+        var fresh = await client.PostAsJsonAsync("/auth/login", new { email, password = "brand-new-pass-2" });
+        Assert.Equal(HttpStatusCode.OK, fresh.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_InvalidToken_Returns400WithCode()
+    {
+        await using var factory = await ApiFactory.CreateAsync(postgres);
+        using var client = factory.CreateClient();
+
+        var response = await client.PostAsJsonAsync("/auth/reset-password",
+            new { token = "no-such-token", newPassword = "brand-new-pass-2" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("invalid_reset_token", Code(await ReadProblemAsync(response)));
+    }
+
+    [Fact]
+    public async Task ResetPassword_WeakPassword_Returns400_AndTokenStillWorks()
+    {
+        await using var factory = await ApiFactory.CreateAsync(postgres);
+        var email = await TestUsers.RegisterAndConfirmAsync(factory);
+        using var client = factory.CreateClient();
+        await client.PostAsJsonAsync("/auth/forgot-password", new { email });
+        var token = factory.Email.LastResetToken(email);
+
+        var weak = await client.PostAsJsonAsync("/auth/reset-password", new { token, newPassword = "short1" });
+        var strong = await client.PostAsJsonAsync("/auth/reset-password", new { token, newPassword = "brand-new-pass-2" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, weak.StatusCode);
+        Assert.Null(Code(await ReadProblemAsync(weak)));
+        Assert.Equal(HttpStatusCode.NoContent, strong.StatusCode);
+    }
+
+    [Fact]
+    public async Task ResetPassword_RevokesTokensIssuedBefore_ButNotAfter()
+    {
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        await using var factory = await ApiFactory.CreateAsync(postgres, configureServices: services =>
+        {
+            services.RemoveAll<TimeProvider>();
+            services.AddSingleton<TimeProvider>(clock);
+        });
+        var email = await TestUsers.RegisterAndConfirmAsync(factory);
+        using var oldSession = await TestUsers.SignInAsync(factory, email);
+        Assert.Equal(HttpStatusCode.OK, (await oldSession.GetAsync("/me")).StatusCode);
+
+        clock.Advance(TimeSpan.FromSeconds(2));
+        using var client = factory.CreateClient();
+        await client.PostAsJsonAsync("/auth/forgot-password", new { email });
+        var reset = await client.PostAsJsonAsync("/auth/reset-password",
+            new { token = factory.Email.LastResetToken(email), newPassword = "brand-new-pass-2" });
+        Assert.Equal(HttpStatusCode.NoContent, reset.StatusCode);
+        using var newSession = await TestUsers.SignInAsync(factory, email, "brand-new-pass-2");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, (await oldSession.GetAsync("/me")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await newSession.GetAsync("/me")).StatusCode);
+    }
+
+    [Fact]
     public async Task Me_WithoutToken_Returns401ProblemJson()
     {
         await using var factory = await ApiFactory.CreateAsync(postgres);

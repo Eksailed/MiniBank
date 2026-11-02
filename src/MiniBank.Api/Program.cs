@@ -68,6 +68,8 @@ builder.Services
             ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
             ClockSkew = TimeSpan.FromSeconds(30)
         };
+        // Токены, выданные до смены пароля, больше не действуют.
+        options.Events = new JwtBearerEvents { OnTokenValidated = SessionRevocation.CheckAsync };
     });
 // Всё закрыто по умолчанию; открытое помечается явно ([AllowAnonymous] на /auth/*, AllowAnonymous() на /health).
 builder.Services.AddAuthorizationBuilder()
