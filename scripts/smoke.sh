@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 # Дымовая проверка поднятого стека: bash scripts/smoke.sh [BASE_URL] [MAILPIT_URL].
 # По умолчанию http://localhost:8080 (веб + API за nginx) и http://localhost:8025 (Mailpit).
+# Адрес RabbitMQ management задаётся RABBIT_URL (по умолчанию http://localhost:15672).
 # Проверка лимита запросов в конце исчерпывает окно входа/регистрации для вашего IP на минуту:
 # повторный запуск в течение минуты упрётся в 429 на регистрации.
 set -euo pipefail
 
 BASE="${1:-http://localhost:8080}"
 MAILPIT="${2:-http://localhost:8025}"
+# Management API RabbitMQ (Compose публикует его только на 127.0.0.1) и учётные данные Compose по умолчанию.
+RABBIT="${RABBIT_URL:-http://localhost:15672}"
+RABBIT_USER="${RABBITMQ_USER:-minibank}"
+RABBIT_PASSWORD="${RABBITMQ_PASSWORD:-minibank-local-only}"
 
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
@@ -94,6 +99,25 @@ expect_status "POST /api/accounts/{id}/deposit" 200 "${AUTH[@]}" -X POST "$BASE/
 expect_status "POST /api/transfers" 200 "${AUTH[@]}" -X POST "$BASE/api/transfers" \
   -H "Content-Type: application/json" -H "Idempotency-Key: smoke-transfer-$RUN" \
   -d "{\"fromAccountId\":\"$FROM\",\"toAccountId\":\"$TO\",\"amount\":30000,\"currency\":\"RUB\"}"
+
+# События пополнения и перевода: публикатор отправляет их в RabbitMQ, потребитель подтверждает (ack) оба,
+# очередь пуста, в dead-letter ничего нет. Статистика management API обновляется раз в ~5 секунд, ждём до 30.
+queue_field() { # <очередь> <поле>: число из JSON очереди management API
+  curl -s -u "$RABBIT_USER:$RABBIT_PASSWORD" "$RABBIT/api/queues/%2F/$1" | { grep -o "\"$2\":[0-9]*" || true; } | head -n 1 | cut -d: -f2
+}
+DELIVERED=0
+for _ in $(seq 1 60); do
+  ACKED="$(queue_field minibank.notifications ack)"
+  PENDING="$(queue_field minibank.notifications messages)"
+  if [ "${ACKED:-0}" -ge 2 ] && [ "${PENDING:-1}" = "0" ]; then
+    DELIVERED=1
+    break
+  fi
+  sleep 0.5
+done
+[ "$DELIVERED" = "1" ] || fail "события не дошли до потребителя (ack=${ACKED:-?}, в очереди=${PENDING:-?})"
+[ "$(queue_field minibank.notifications.dead messages)" = "0" ] || fail "в dead-letter очереди есть сообщения"
+echo "ok: события доставлены в RabbitMQ и обработаны потребителем"
 
 # Префикс /api снимается, query string доходит до API.
 expect_status "GET /api/accounts/{id}/entries?page=1&pageSize=5" 200 "${AUTH[@]}" \

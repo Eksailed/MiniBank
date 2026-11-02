@@ -12,13 +12,13 @@ C#, ASP.NET Core (.NET 9), PostgreSQL 17, EF Core 9, Docker. Веб-клиент
 
 ## Статус
 
-Этапы 1–4 готовы. Реализация идёт этапами, каждый из которых заканчивается рабочим состоянием:
+Этапы 1–5 готовы. Реализация идёт этапами, каждый из которых заканчивается рабочим состоянием:
 
 1. ✅ Ядро: счета, переводы, двойная запись, баланс из проводок.
 2. ✅ Корректность: идемпотентность, защита от гонок и двойного списания.
 3. ✅ Качество: тесты, Docker Compose, CI, документация.
 4. ✅ Безопасность и функции: вход по email и паролю (JWT), подтверждение email, сброс пароля, владение счетами, лимиты, выписки с CSV.
-5. События: outbox-паттерн и брокер сообщений.
+5. ✅ События: outbox-паттерн, RabbitMQ и потребитель с дедупликацией.
 6. Сервис уведомлений и Telegram-бот.
 
 ## Быстрый старт
@@ -29,15 +29,16 @@ C#, ASP.NET Core (.NET 9), PostgreSQL 17, EF Core 9, Docker. Веб-клиент
 docker compose up --build
 ```
 
-Поднимется весь стек: PostgreSQL, API, веб-клиент за nginx и Mailpit. Миграции применяются при старте API.
+Поднимется весь стек: PostgreSQL, RabbitMQ, API, потребитель событий, веб-клиент за nginx и Mailpit. Миграции применяются при старте API.
 
 - Приложение: <http://localhost:8080>
 - API и Swagger: <http://localhost:5050>, <http://localhost:5050/swagger> (порт открыт только на `127.0.0.1`)
 - Почта (Mailpit): <http://localhost:8025>
+- Очереди RabbitMQ: <http://localhost:15672> (логин `minibank`, пароль `minibank-local-only`; порт открыт только на `127.0.0.1`)
 
 Настоящих писем стек не отправляет: Mailpit перехватывает всё, что шлёт API. Зарегистрируйтесь в приложении, откройте <http://localhost:8025>, найдите письмо «Подтвердите email в MiniBank» и перейдите по ссылке из него — после этого можно войти.
 
-Остановка: `docker compose down`. Данные лежат в томе `minibank-data` и сохраняются между запусками; `docker compose down -v` их стирает. Порты 5432, 5050, 8025 и 8080 на хосте должны быть свободны.
+Остановка: `docker compose down`. Данные лежат в томе `minibank-data` и сохраняются между запусками; `docker compose down -v` их стирает. Порты 5432, 5050, 8025, 8080 и 15672 на хосте должны быть свободны.
 
 Ключ подписи JWT в Compose — демонстрационный и публичный (только для локального запуска). Для любой другой среды задайте свой, не короче 32 байт: `JWT_KEY=... docker compose up`.
 
@@ -223,13 +224,33 @@ erDiagram
     }
 ```
 
+## События
+
+Перевод и пополнение пишут событие в таблицу `outbox_messages` в той же транзакции, что и сама операция. Фоновый публикатор в API забирает пачки строк (`SELECT … FOR UPDATE SKIP LOCKED`) и публикует их в обменник `minibank.events` (topic) с подтверждениями брокера. Потребитель `MiniBank.Notifications` читает очередь `minibank.notifications` и пишет полученное в свою схему `notifications` в той же базе `minibank`.
+
+```mermaid
+flowchart LR
+    Api["API: операция + outbox в одной транзакции"] --> Out[("outbox_messages")]
+    Out -->|публикатор, confirms| Ex["minibank.events"]
+    Ex --> Q["minibank.notifications"]
+    Q -->|ручной ack| Cons["Notifications: дедупликация по eventId"]
+    Q -.после 3 повторов.-> Dead["minibank.notifications.dead"]
+```
+
+- События: `transfer.completed` и `account.deposited` (версия 1). В них только идентификаторы и суммы, без email, имён и токенов.
+- Доставка at-least-once, повтор безопасен: потребитель отбрасывает дубль по `eventId`. Упавшая обработка повторяется до 3 раз, затем сообщение уходит в dead-letter очередь. Битый конверт попадает туда сразу, неизвестные тип и версия игнорируются.
+- Ошибки публикации: повтор с растущей паузой (5 с, 10 с, … до 5 минут). После 10 неудачных попыток строка помечается `dead_at` и больше не отправляется. Опубликованные строки удаляются через 7 дней.
+- Недоступность брокера не влияет на `/health` и на сами операции: события копятся в outbox.
+- Настройки: `Events:Enabled` (по умолчанию `true`; `false` отключает публикатор, но события всё равно пишутся), `Events:PollInterval`, `Events:BatchSize`, `Events:MaxAttempts`; `RabbitMq:Host`, `Port`, `User`, `Password`. В Compose логин и пароль брокера задаются через `RABBITMQ_USER` и `RABBITMQ_PASSWORD`.
+- Посмотреть очереди и содержимое dead-letter очереди можно в панели <http://localhost:15672>.
+
 ## CI
 
 Workflow [`.github/workflows/ci.yml`](.github/workflows/ci.yml) запускается на каждый push в `main` и на каждый pull request. Три независимых job-а:
 
-- **backend** — `dotnet test` (интеграционные тесты поднимают PostgreSQL через Testcontainers);
+- **backend** — `dotnet test` (интеграционные тесты поднимают PostgreSQL и RabbitMQ через Testcontainers);
 - **web** — `npm ci`, тесты Vitest, `npm run build`;
-- **stack** — `docker compose up -d --build --wait` собирает оба образа и поднимает стек, затем `scripts/smoke.sh` проходит весь сценарий через nginx: регистрация, письмо из Mailpit, подтверждение email, вход, два счёта, пополнение, перевод, выписка и CSV (BOM, заголовок, число строк), страница приложения и глубокие ссылки SPA, сброс пароля (письмо, новый пароль, отзыв прежнего токена входа), 401 без токена, а также то, что подделанный `X-Forwarded-For` не обходит лимит запросов. При падении job печатает `docker compose logs`.
+- **stack** — `docker compose up -d --build --wait` собирает оба образа и поднимает стек, затем `scripts/smoke.sh` проходит весь сценарий через nginx: регистрация, письмо из Mailpit, подтверждение email, вход, два счёта, пополнение, перевод, выписка и CSV (BOM, заголовок, число строк), страница приложения и глубокие ссылки SPA, сброс пароля (письмо, новый пароль, отзыв прежнего токена входа), 401 без токена, доставку событий перевода до потребителя (очередь пуста, dead-letter пуста), а также то, что подделанный `X-Forwarded-For` не обходит лимит запросов. При падении job печатает `docker compose logs`.
 
 Образы никуда не публикуются. То же, что делает job `stack`, запускается локально (повторный запуск смоука раньше чем через минуту упрётся в лимит запросов к `/auth`):
 
@@ -263,10 +284,13 @@ src/MiniBank.Domain          сущности и правила: Account, Transf
 src/MiniBank.Application     сценарии (AccountsService, TransfersService) и порты
 src/MiniBank.Infrastructure  EF Core, миграции, репозитории
 src/MiniBank.Api             контроллеры, обработка ошибок, Swagger, Dockerfile
+src/MiniBank.Contracts       контракты событий (конверт, типы, JSON-настройки)
+src/MiniBank.Messaging       настройки RabbitMQ и топология обменников и очередей
+src/MiniBank.Notifications   потребитель событий: дедупликация, схема notifications, Dockerfile
 web/                         веб-клиент: React + TypeScript + Vite, Dockerfile и nginx.conf
 tests/                       юнит-, БД- и API-тесты
 scripts/                     smoke.sh — сквозная проверка поднятого стека
 .github/workflows/           CI
-docker-compose.yml           весь стек: PostgreSQL + API + веб + Mailpit
+docker-compose.yml           весь стек: PostgreSQL + RabbitMQ + API + потребитель + веб + Mailpit
 docs/                        спецификации, планы этапов, скриншоты для README
 ```

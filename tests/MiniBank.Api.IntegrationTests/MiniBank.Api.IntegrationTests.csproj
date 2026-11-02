@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MiniBank.Api\MiniBank.Api.csproj" />
+    <ProjectReference Include="..\..\src\MiniBank.Notifications\MiniBank.Notifications.csproj" />
     <ProjectReference Include="..\MiniBank.TestSupport\MiniBank.TestSupport.csproj" />
   </ItemGroup>
 
