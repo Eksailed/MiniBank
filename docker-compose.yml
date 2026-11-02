@@ -81,6 +81,25 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # Потребитель событий. Таблицы лежат в схеме notifications той же базы minibank (отдельная история миграций),
+  # поэтому отдельная база и скрипт инициализации не нужны.
+  notifications:
+    build:
+      context: .
+      dockerfile: src/MiniBank.Notifications/Dockerfile
+    environment:
+      ConnectionStrings__Notifications: "Host=postgres;Port=5432;Database=minibank;Username=postgres;Password=postgres"
+      Database__MigrateOnStartup: "true"
+      RabbitMq__Host: rabbitmq
+      RabbitMq__User: "${RABBITMQ_USER:-minibank}"
+      RabbitMq__Password: "${RABBITMQ_PASSWORD:-minibank-local-only}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
+
   web:
     build: web
     ports:
