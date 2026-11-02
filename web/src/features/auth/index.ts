@@ -1,6 +1,8 @@
 export { AuthProvider, useAuth } from './AuthProvider'
 export { ConfirmEmailPage } from './ConfirmEmailPage'
+export { ForgotPasswordPage } from './ForgotPasswordPage'
 export { LoginPage } from './LoginPage'
 export { RegisterPage } from './RegisterPage'
+export { ResetPasswordPage } from './ResetPasswordPage'
 export { RequireAuth } from './RequireAuth'
 export { clearToken, getToken, setToken } from './session'

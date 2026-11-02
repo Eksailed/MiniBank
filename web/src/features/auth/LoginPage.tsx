@@ -62,6 +62,9 @@ export function LoginPage() {
         <Button type="submit" pending={login.isPending}>
           Войти
         </Button>
+        <Link to="/forgot-password" className={styles.links}>
+          Забыли пароль?
+        </Link>
       </form>
       {notConfirmed && <ResendConfirmation email={email.trim()} />}
       <p className={styles.links}>

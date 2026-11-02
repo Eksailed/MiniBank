@@ -11,12 +11,22 @@ const COOLDOWN_SECONDS = 60
  * Без `email` показывает поле ввода, с `email` — одну кнопку (адрес уже известен, например со страницы входа).
  * Таймер после отправки — подсказка в интерфейсе, а не защита: ограничение повторов живёт на сервере.
  */
-export function ResendConfirmation({ email, label = 'Отправить ещё раз' }: { email?: string; label?: string }) {
+export function ResendConfirmation({
+  email,
+  label = 'Отправить ещё раз',
+  sentText = 'Письмо отправлено',
+  action = api.resendConfirmation,
+}: {
+  email?: string
+  label?: string
+  sentText?: string
+  action?: (email: string) => Promise<void>
+}) {
   const [typed, setTyped] = useState('')
   const [fieldError, setFieldError] = useState<string>()
   const [secondsLeft, setSecondsLeft] = useState(0)
   const resend = useMutation({
-    mutationFn: (address: string) => api.resendConfirmation(address),
+    mutationFn: (address: string) => action(address),
     onSuccess: () => setSecondsLeft(COOLDOWN_SECONDS),
   })
 
@@ -51,7 +61,7 @@ export function ResendConfirmation({ email, label = 'Отправить ещё �
         />
       )}
       {resend.isError && <ErrorNotice error={resend.error} />}
-      {resend.isSuccess && <p className={styles.status}>Письмо отправлено</p>}
+      {resend.isSuccess && <p className={styles.status}>{sentText}</p>}
       <Button type="submit" variant="secondary" pending={resend.isPending} disabled={secondsLeft > 0}>
         {label}
       </Button>

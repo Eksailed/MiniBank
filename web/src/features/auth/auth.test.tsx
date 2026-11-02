@@ -343,3 +343,121 @@ describe('session', () => {
     expect(getToken()).toBeNull()
   })
 })
+
+describe('password reset', () => {
+  it('links to the reset request page from the login page', async () => {
+    renderApp('/login', { token: null })
+
+    expect(await screen.findByRole('link', { name: 'Забыли пароль?' })).toHaveAttribute('href', '/forgot-password')
+  })
+
+  it('does not send a request for an empty or malformed email', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      http.post('/api/auth/forgot-password', async ({ request }) => {
+        bodies.push(await request.json())
+        return new HttpResponse(null, { status: 202 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderApp('/forgot-password', { token: null })
+
+    await user.click(await screen.findByRole('button', { name: 'Отправить ссылку' }))
+    expect(await screen.findByText('Введите email')).toBeInTheDocument()
+    await user.type(screen.getByLabelText('Email'), 'not-an-email')
+    await user.click(screen.getByRole('button', { name: 'Отправить ссылку' }))
+
+    expect(screen.getByText('Введите email')).toBeInTheDocument()
+    expect(bodies).toEqual([])
+  })
+
+  it('requests the letter without revealing whether the address exists, then blocks resending', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      http.post('/api/auth/forgot-password', async ({ request }) => {
+        bodies.push(await request.json())
+        return new HttpResponse(null, { status: 202 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderApp('/forgot-password', { token: null })
+
+    await user.type(await screen.findByLabelText('Email'), 'alice@example.com')
+    await user.click(screen.getByRole('button', { name: 'Отправить ссылку' }))
+
+    expect(await screen.findByText('Если такой адрес зарегистрирован, мы отправили письмо')).toBeInTheDocument()
+    expect(await screen.findByText(/через 60 с/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Отправить ссылку' })).toBeDisabled()
+    expect(bodies).toEqual([{ email: 'alice@example.com' }])
+  })
+
+  it('shows the new password form for a link with a token', async () => {
+    renderApp('/reset-password#token=abc', { token: null })
+
+    expect(await screen.findByLabelText('Новый пароль')).toBeInTheDocument()
+    expect(screen.getByLabelText('Повторите пароль')).toBeInTheDocument()
+  })
+
+  it('rejects a short or mismatched password without a request', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      http.post('/api/auth/reset-password', async ({ request }) => {
+        bodies.push(await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderApp('/reset-password#token=abc', { token: null })
+
+    await user.type(await screen.findByLabelText('Новый пароль'), 'short')
+    await user.type(screen.getByLabelText('Повторите пароль'), 'short')
+    await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
+    expect(await screen.findByText(/не короче 8 символов/)).toBeInTheDocument()
+
+    await user.clear(screen.getByLabelText('Новый пароль'))
+    await user.type(screen.getByLabelText('Новый пароль'), 'long-enough-1')
+    await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
+    expect(await screen.findByText('Пароли не совпадают')).toBeInTheDocument()
+    expect(bodies).toEqual([])
+  })
+
+  it('changes the password and offers to sign in', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      http.post('/api/auth/reset-password', async ({ request }) => {
+        bodies.push(await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const user = userEvent.setup()
+    renderApp('/reset-password#token=abc', { token: null })
+
+    await user.type(await screen.findByLabelText('Новый пароль'), 'long-enough-1')
+    await user.type(screen.getByLabelText('Повторите пароль'), 'long-enough-1')
+    await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
+
+    expect(await screen.findByText('Пароль изменён')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Войти' })).toHaveAttribute('href', '/login')
+    expect(bodies).toEqual([{ token: 'abc', newPassword: 'long-enough-1' }])
+  })
+
+  it('explains an invalid link and offers to request a new one', async () => {
+    server.use(http.post('/api/auth/reset-password', () => problem(400, 'invalid_reset_token')))
+    const user = userEvent.setup()
+    renderApp('/reset-password#token=stale', { token: null })
+
+    await user.type(await screen.findByLabelText('Новый пароль'), 'long-enough-1')
+    await user.type(screen.getByLabelText('Повторите пароль'), 'long-enough-1')
+    await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ссылка недействительна или устарела')
+    expect(screen.getByRole('link', { name: 'Запросить новую' })).toHaveAttribute('href', '/forgot-password')
+  })
+
+  it('treats a link without a token as invalid', async () => {
+    renderApp('/reset-password', { token: null })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('Ссылка недействительна или устарела')
+    expect(screen.getByRole('link', { name: 'Запросить новую' })).toHaveAttribute('href', '/forgot-password')
+  })
+})

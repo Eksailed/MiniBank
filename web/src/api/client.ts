@@ -151,6 +151,14 @@ export const api = {
     await apiRequest<void>('/auth/resend-confirmation', { method: 'POST', body: { email } })
   },
 
+  async forgotPassword(email: string): Promise<void> {
+    await apiRequest<void>('/auth/forgot-password', { method: 'POST', body: { email } })
+  },
+
+  async resetPassword(token: string, newPassword: string): Promise<void> {
+    await apiRequest<void>('/auth/reset-password', { method: 'POST', body: { token, newPassword } })
+  },
+
   async getMe(): Promise<UserProfile> {
     const { data } = await apiRequest<Schemas['UserProfileDto']>('/me')
     return toUserProfile(data)

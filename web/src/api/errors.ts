@@ -54,6 +54,7 @@ const KNOWN_DETAILS: Array<[RegExp, string]> = [
 const CODE_DESCRIPTIONS: Record<string, ErrorDescription> = {
   email_taken: { title: 'Этот email уже зарегистрирован', retryable: false },
   invalid_confirmation_token: { title: 'Ссылка недействительна или устарела', retryable: false },
+  invalid_reset_token: { title: 'Ссылка недействительна или устарела', retryable: false },
   invalid_credentials: { title: 'Неверный email или пароль', retryable: false },
   account_limit_reached: {
     title: 'Достигнут максимум счетов',

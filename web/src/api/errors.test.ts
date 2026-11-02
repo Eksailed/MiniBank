@@ -13,6 +13,12 @@ describe('describeError', () => {
     expect(d.fieldErrors).toEqual({ Currency: ['The Currency field is required.'] })
   })
 
+  it('describes an invalid reset link', () => {
+    const d = describeError(new ApiError(400, { code: 'invalid_reset_token' }))
+    expect(d.title).toBe('Ссылка недействительна или устарела')
+    expect(d.retryable).toBe(false)
+  })
+
   it('maps 404 to "Счёт не найден"', () => {
     expect(describeError(new ApiError(404, { detail: 'Account not found' })).title).toBe('Счёт не найден')
   })

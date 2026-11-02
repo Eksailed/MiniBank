@@ -1,6 +1,6 @@
 import { createBrowserRouter, createMemoryRouter, type RouteObject } from 'react-router'
 import { AccountPage, HomePage } from '../features/accounts'
-import { ConfirmEmailPage, LoginPage, RegisterPage, RequireAuth } from '../features/auth'
+import { ConfirmEmailPage, ForgotPasswordPage, LoginPage, RegisterPage, RequireAuth, ResetPasswordPage } from '../features/auth'
 import { PaymentsPage } from '../features/payments'
 import { ProfilePage } from '../features/profile'
 import { EntriesPage } from '../features/entries'
@@ -14,6 +14,8 @@ const routes: RouteObject[] = [
       { path: '/login', element: <LoginPage /> },
       { path: '/register', element: <RegisterPage /> },
       { path: '/confirm-email', element: <ConfirmEmailPage /> },
+      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      { path: '/reset-password', element: <ResetPasswordPage /> },
     ],
   },
   {
