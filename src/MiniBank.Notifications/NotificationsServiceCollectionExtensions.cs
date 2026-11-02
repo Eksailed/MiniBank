@@ -28,7 +28,9 @@ public static class NotificationsServiceCollectionExtensions
     {
         services.AddSingleton(TelegramOptions.Load(configuration));
         services.AddSingleton(TimeProvider.System);
-        services.AddHttpClient<ITelegramClient, TelegramClient>(c => c.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddHttpClient<ITelegramClient, TelegramClient>(c => c.Timeout = Timeout.InfiniteTimeSpan)
+            // Токен бота стоит в пути запроса, а встроенное логирование HttpClientFactory пишет URL целиком.
+            .RemoveAllLoggers();
         services.AddSingleton<DeliveryBatchProcessor>();
         services.AddHostedService<DeliverySender>();
         services.AddSingleton<LinkService>();

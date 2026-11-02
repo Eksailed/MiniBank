@@ -1,5 +1,8 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using MiniBank.Notifications.Telegram;
 
 namespace MiniBank.Notifications.Tests;
@@ -28,6 +31,40 @@ public class TelegramClientTests
         var handler = new StubHandler(respond);
         var options = new TelegramOptions { BotToken = Token, BotUsername = "bot", InternalSecret = "0123456789abcdef" };
         return (new TelegramClient(new HttpClient(handler), options), handler);
+    }
+
+    private sealed class CapturingLogger(List<string> lines) : ILoggerProvider, ILogger
+    {
+        public ILogger CreateLogger(string categoryName) => this;
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            lock (lines) lines.Add(formatter(state, exception) + exception);
+        }
+        public void Dispose() { }
+    }
+
+    [Fact]
+    public async Task ClientFromContainer_DoesNotLogTokenInRequestUrl()
+    {
+        var lines = new List<string>();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Telegram:BotToken"] = Token,
+            ["Telegram:BotUsername"] = "bot",
+            ["Telegram:ApiBaseUrl"] = "http://127.0.0.1:1",
+            ["Notifications:InternalSecret"] = "0123456789abcdef",
+        }).Build();
+        var services = new ServiceCollection();
+        services.AddLogging(b => b.SetMinimumLevel(LogLevel.Trace).AddProvider(new CapturingLogger(lines)));
+        services.AddTelegram(configuration);
+        await using var provider = services.BuildServiceProvider();
+
+        try { await provider.GetRequiredService<ITelegramClient>().SendMessageAsync(1, "hi", default); }
+        catch (Exception) { /* порт закрыт: важны только записи в журнале */ }
+
+        Assert.DoesNotContain(lines, l => l.Contains("SECRET-TOKEN"));
     }
 
     [Fact]

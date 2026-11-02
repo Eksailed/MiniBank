@@ -54,6 +54,35 @@ public class LinkServiceTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Redeem_UserMovesToNewChat_ClosesPendingOfOldChat()
+    {
+        var (db, _, service) = await SetupAsync();
+        var user = Guid.NewGuid();
+        Assert.True(await service.RedeemAsync((await service.CreateCodeAsync(user, default)).Code, 100, default));
+        await using (var context = db.CreateDbContext())
+        {
+            var received = new ReceivedEvent
+            {
+                Id = Guid.NewGuid(), EventId = Guid.NewGuid(), Type = "transfer.completed", OwnerId = user,
+                OccurredAt = Start, ReceivedAt = Start,
+            };
+            context.ReceivedEvents.Add(received);
+            context.TelegramDeliveries.Add(new TelegramDelivery
+            {
+                Id = Guid.NewGuid(), ReceivedEventId = received.Id, ChatId = 100, Text = "x", NextAttemptAt = Start,
+            });
+            await context.SaveChangesAsync();
+        }
+
+        Assert.True(await service.RedeemAsync((await service.CreateCodeAsync(user, default)).Code, 200, default));
+
+        await using var check = db.CreateDbContext();
+        var delivery = await check.TelegramDeliveries.SingleAsync();
+        Assert.Equal(DeliveryStatus.Failed, delivery.Status);
+        Assert.Equal("chat relinked", delivery.LastError);
+    }
+
+    [Fact]
     public async Task Redeem_SecondUse_Fails()
     {
         var (_, _, service) = await SetupAsync();

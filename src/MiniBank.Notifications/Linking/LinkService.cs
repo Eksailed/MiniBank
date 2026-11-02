@@ -61,6 +61,10 @@ public sealed class LinkService(IDbContextFactory<NotificationsDbContext> dbFact
             .Select(l => (Guid?)l.UserId).FirstOrDefaultAsync(ct);
         if (previousOwner is not null && previousOwner != userId)
             await FailPendingAsync(db, chatId, now, ct);
+        var previousChat = await db.TelegramLinks.Where(l => l.UserId == userId)
+            .Select(l => (long?)l.ChatId).FirstOrDefaultAsync(ct);
+        if (previousChat is not null && previousChat != chatId)
+            await FailPendingAsync(db, previousChat.Value, now, ct);
 
         await db.TelegramLinks.Where(l => l.ChatId == chatId || l.UserId == userId).ExecuteDeleteAsync(ct);
         db.TelegramLinks.Add(new TelegramLink { UserId = userId.Value, ChatId = chatId, LinkedAt = now });

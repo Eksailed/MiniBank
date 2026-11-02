@@ -54,9 +54,13 @@ public class DeliverySenderTests(PostgresFixture postgres)
         DeliveryStatus status = DeliveryStatus.Pending)
     {
         await using var context = rig.Db.CreateDbContext();
+        // Чат принадлежит владельцу события: доставка в чужой чат отправителем не допускается.
+        var owner = await context.TelegramLinks.Where(l => l.ChatId == chatId).Select(l => (Guid?)l.UserId).FirstOrDefaultAsync() ?? Guid.NewGuid();
+        if (!await context.TelegramLinks.AnyAsync(l => l.ChatId == chatId))
+            context.TelegramLinks.Add(new TelegramLink { UserId = owner, ChatId = chatId, LinkedAt = Start });
         var received = new ReceivedEvent
         {
-            Id = Guid.NewGuid(), EventId = Guid.NewGuid(), Type = "transfer.completed", OwnerId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), EventId = Guid.NewGuid(), Type = "transfer.completed", OwnerId = owner,
             OccurredAt = Start, ReceivedAt = Start,
         };
         var delivery = new TelegramDelivery
@@ -89,6 +93,26 @@ public class DeliverySenderTests(PostgresFixture postgres)
         Assert.Equal(DeliveryStatus.Sent, row.Status);
         Assert.Equal(Start, row.SentAt);
         Assert.Equal((5L, "Перевод: −1,00 ₽"), Assert.Single(rig.Telegram.Sent));
+    }
+
+    [Fact]
+    public async Task ChatRelinkedToAnotherUserAfterQueueing_IsNotSent()
+    {
+        var rig = await SetupAsync();
+        var delivery = await AddDeliveryAsync(rig, 5, "Перевод: −1,00 ₽");
+        await using (var context = rig.Db.CreateDbContext())
+        {
+            await context.TelegramLinks.Where(l => l.ChatId == 5).ExecuteDeleteAsync();
+            context.TelegramLinks.Add(new TelegramLink { UserId = Guid.NewGuid(), ChatId = 5, LinkedAt = Start });
+            await context.SaveChangesAsync();
+        }
+
+        await rig.Processor.ProcessBatchAsync(default);
+
+        var row = await ReloadAsync(rig, delivery.Id);
+        Assert.Equal(DeliveryStatus.Failed, row.Status);
+        Assert.Equal("chat relinked", row.LastError);
+        Assert.Empty(rig.Telegram.Sent);
     }
 
     [Fact]
@@ -165,13 +189,6 @@ public class DeliverySenderTests(PostgresFixture postgres)
         var first = await AddDeliveryAsync(rig, 5);
         var second = await AddDeliveryAsync(rig, 5);
         var other = await AddDeliveryAsync(rig, 6);
-        await using (var context = rig.Db.CreateDbContext())
-        {
-            context.TelegramLinks.Add(new TelegramLink { UserId = Guid.NewGuid(), ChatId = 5, LinkedAt = Start });
-            context.TelegramLinks.Add(new TelegramLink { UserId = Guid.NewGuid(), ChatId = 6, LinkedAt = Start });
-            await context.SaveChangesAsync();
-        }
-
         rig.Telegram.Behavior = (chat, _) => chat == 5 ? new TelegramForbiddenException() : null;
         await rig.Processor.ProcessBatchAsync(default);
 

@@ -40,10 +40,27 @@ public sealed class DeliveryBatchProcessor(
                 """)
             .ToListAsync(ct);
 
+        // Сообщение уходит только в чат, который и сейчас привязан к владельцу события: чат могли перепривязать
+        // или отвязать, пока доставка ждала в очереди.
+        var eventIds = rows.Select(r => r.ReceivedEventId).ToList();
+        var owners = await db.ReceivedEvents.Where(e => eventIds.Contains(e.Id))
+            .ToDictionaryAsync(e => e.Id, e => e.OwnerId, ct);
+        var chatIds = rows.Select(r => r.ChatId).Distinct().ToList();
+        var linkedChats = (await db.TelegramLinks.Where(l => chatIds.Contains(l.ChatId))
+            .Select(l => new { l.ChatId, l.UserId }).ToListAsync(ct))
+            .Select(l => (l.ChatId, l.UserId)).ToHashSet();
+
         var processed = 0;
         var forbiddenChats = new HashSet<long>();
         foreach (var row in rows)
         {
+            if (!owners.TryGetValue(row.ReceivedEventId, out var owner) || !linkedChats.Contains((row.ChatId, owner)))
+            {
+                Fail(row, "chat relinked", now);
+                processed++;
+                continue;
+            }
+
             if (forbiddenChats.Contains(row.ChatId))
             {
                 Fail(row, "Forbidden", now);
