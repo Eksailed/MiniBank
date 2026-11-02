@@ -1,0 +1,187 @@
+# MiniBank: сброс пароля. План реализации
+
+> **Для исполнителя:** используйте superpowers:subagent-driven-development (рекомендуется) или superpowers:executing-plans. Шаги отмечены чекбоксами (`- [ ]`).
+
+**Цель:** пользователь по письму со ссылкой задаёт новый пароль; после смены все прежние токены входа перестают работать.
+
+**Архитектура:** сброс повторяет механизм подтверждения email (хэшированный одноразовый токен, ответ 202 без раскрытия адреса, лимит повторов 60 с). Отзыв сессий: колонка `users.password_changed_at` и проверка `iat` в `JwtBearerEvents.OnTokenValidated`.
+
+**Стек:** .NET 9, EF Core 9, PostgreSQL 17, xUnit (интеграционные тесты на реальной БД через `PostgresFixture`), React 19 + TypeScript, Vitest + MSW.
+
+**Спецификация:** `docs/specs/2026-11-02-minibank-password-reset-design.md`
+
+## Глобальные ограничения
+
+- Коммиты и тексты на русском (`feat`/`fix`/`test`/`docs` с латинским скоупом), без `Co-Authored-By` и упоминаний Claude. Коммит после каждой задачи; `git push` только по просьбе пользователя.
+- Работа в `main` (пользователь отказался от отдельной ветки).
+- Срок токена сброса: 1 час. Повтор запроса: не чаще раза в 60 с на пользователя (`ResendInterval` в `AuthService`).
+- Ответ `POST /auth/forgot-password` всегда 202. В логи не попадают токен, ссылка, адрес (только `UserId` и тип исключения).
+- Пароль проверяет существующая `PasswordPolicy.Validate`.
+- Тексты интерфейса на русском, стили через CSS Modules и токены темы из `tokens.css`.
+- Запуск тестов: `dotnet test` (нужен Docker для PostgreSQL через testcontainers/fixture) и `npm test` в `web/`.
+
+## Review Focus
+
+Случаи, которые не выводятся из спецификации прямо, но могут навредить; у каждого есть тест в указанной задаче.
+
+1. Гонка: два одновременных `reset-password` с одним токеном — пароль меняется один раз, второй запрос получает 400 (задача 3: токен читается `FOR UPDATE`).
+2. Неподтверждённый пользователь после сброса может войти (email подтверждён сбросом) (задача 3).
+3. Токен подтверждения email и токен сброса не взаимозаменяемы: токен одной таблицы не подходит другой (задача 3).
+4. Слабый пароль в `reset-password` не сжигает токен: после 400 тот же токен работает с нормальным паролем (задача 3).
+5. Токен, выданный сразу после сброса, не отзывается (граница `iat` против `password_changed_at`) (задачи 1 и 4).
+
+---
+
+### Задача 1: Домен
+
+**Файлы:**
+- Создать: `src/MiniBank.Domain/PasswordResetToken.cs`
+- Изменить: `src/MiniBank.Domain/User.cs`
+- Тесты: создать `tests/MiniBank.Domain.Tests/PasswordResetTokenTests.cs`, изменить `tests/MiniBank.Domain.Tests/UserTests.cs`
+
+**Интерфейсы:**
+- Производит (нужно задачам 2–4):
+  - `PasswordResetToken`: те же члены, что у `EmailConfirmationToken` (`Id`, `UserId`, `TokenHash`, `CreatedAt`, `ExpiresAt`, `UsedAt`, `static Create(Guid userId, string tokenHash, DateTimeOffset now)`, `IsUsableAt(DateTimeOffset)`, `MarkUsed(DateTimeOffset)`), `public static readonly TimeSpan Lifetime = TimeSpan.FromHours(1)`.
+  - `User.PasswordChangedAt` (`DateTimeOffset?`, private set), `void User.ChangePassword(string passwordHash, DateTimeOffset now)`, `bool User.IsSessionRevoked(DateTimeOffset tokenIssuedAt)`.
+
+- [ ] **Шаг 1: Падающие тесты.** В `PasswordResetTokenTests` повторить три теста из `EmailConfirmationTokenTests` с `Lifetime` 1 час (`Create_ExpiresInOneHour`, `IsUsableAt_TrueBeforeExpiry_FalseAtAndAfter`, `MarkUsed_MakesTokenUnusable`). В `UserTests` добавить:
+  - `ChangePassword_ReplacesHashAndSetsPasswordChangedAt`;
+  - `ChangePassword_ConfirmsEmailOfUnconfirmedUser` (после вызова `IsEmailConfirmed` и `EmailConfirmedAt == now`);
+  - `ChangePassword_KeepsOriginalConfirmationTimeOfConfirmedUser`;
+  - `ChangePassword_RejectsBlankHash` (`DomainValidationException`);
+  - `IsSessionRevoked_FalseWhenPasswordNeverChanged`;
+  - `IsSessionRevoked_TrueForTokenIssuedBeforeChange_FalseForTokenIssuedAtOrAfter` (смена в 12:00:30.700: токен 12:00:29 → true, 12:00:30 → false, 12:00:31 → false; сравнение по целым секундам, потому что `iat` в JWT хранится с точностью до секунды).
+- [ ] **Шаг 2: Запустить.** `dotnet test tests/MiniBank.Domain.Tests` — ожидается ошибка компиляции или FAIL (членов ещё нет).
+- [ ] **Шаг 3: Реализовать** `PasswordResetToken` по образцу `EmailConfirmationToken`; в `User` добавить свойство и методы. `IsSessionRevoked`: `PasswordChangedAt` не `null` и `tokenIssuedAt < PasswordChangedAt` усечённого до секунды (`UtcTicks / TimeSpan.TicksPerSecond`).
+- [ ] **Шаг 4: Запустить** `dotnet test tests/MiniBank.Domain.Tests` — ожидается PASS.
+- [ ] **Шаг 5: Коммит** `feat(domain): токен сброса пароля и отзыв сессий по дате смены пароля`.
+
+---
+
+### Задача 2: Хранилище
+
+**Файлы:**
+- Создать: `src/MiniBank.Infrastructure/Persistence/Configurations/PasswordResetTokenConfiguration.cs`, миграция `AddPasswordReset` (сгенерированные файлы в `Persistence/Migrations`)
+- Изменить: `MiniBankDbContext.cs`, `Configurations/UserConfiguration.cs`, `src/MiniBank.Application/Abstractions/IUserRepository.cs`, `UserRepository.cs`
+- Тесты: `tests/MiniBank.Infrastructure.Tests/RepositoryTests.cs`, `SchemaTests.cs`
+
+**Интерфейсы:**
+- Потребляет: `PasswordResetToken`, `User.PasswordChangedAt` из задачи 1.
+- Производит в `IUserRepository` (нужно задаче 3):
+  - `Task<PasswordResetToken?> FindResetTokenByHashAsync(string hash, CancellationToken ct)` — `SELECT … FOR UPDATE`, как `FindTokenByHashAsync`;
+  - `Task<PasswordResetToken?> FindLatestResetTokenAsync(Guid userId, CancellationToken ct)`;
+  - `Task InvalidateOpenResetTokensAsync(Guid userId, DateTimeOffset now, CancellationToken ct)`;
+  - `void Add(PasswordResetToken token)`.
+
+- [ ] **Шаг 1: Падающие тесты.** В `RepositoryTests`: `ResetToken_RoundTripsAndIsFoundByHash`, `FindLatestResetToken_ReturnsNewest`, `InvalidateOpenResetTokens_MarksOnlyOpenTokensOfThatUser` (токен другого пользователя не затронут), `User_PasswordChangedAt_IsPersisted`. В `SchemaTests`: таблица `password_reset_tokens` имеет уникальный индекс `ix_password_reset_tokens_token_hash`, внешний ключ на `users` с каскадным удалением (по образцу существующих проверок `email_confirmation_tokens`), колонка `users.password_changed_at` допускает `NULL`.
+- [ ] **Шаг 2: Запустить.** `dotnet test tests/MiniBank.Infrastructure.Tests --filter "FullyQualifiedName~RepositoryTests|FullyQualifiedName~SchemaTests"` — ожидается FAIL/ошибка компиляции.
+- [ ] **Шаг 3: Реализовать.** `PasswordResetTokenConfiguration` — копия `EmailConfirmationTokenConfiguration` (таблица `password_reset_tokens`, индекс `ix_password_reset_tokens_token_hash`); `DbSet<PasswordResetToken> PasswordResetTokens` в `MiniBankDbContext` и подключение конфигурации так же, как у остальных; `PasswordChangedAt` в `UserConfiguration` (необязательное свойство, колонка по общему соглашению об именах — `password_changed_at`); методы репозитория по образцу методов для токенов подтверждения.
+- [ ] **Шаг 4: Миграция.** Из корня репозитория: `dotnet ef migrations add AddPasswordReset --project src/MiniBank.Infrastructure --startup-project src/MiniBank.Api`. Проверить, что миграция только создаёт таблицу с индексами и добавляет nullable-колонку, ничего не меняя в остальных таблицах.
+- [ ] **Шаг 5: Запустить** `dotnet test tests/MiniBank.Infrastructure.Tests` — ожидается PASS.
+- [ ] **Шаг 6: Коммит** `feat(infra): таблица токенов сброса пароля и колонка password_changed_at`.
+
+---
+
+### Задача 3: Сценарии сброса
+
+**Файлы:**
+- Изменить: `src/MiniBank.Application/Auth/AuthService.cs`, `src/MiniBank.Application/Exceptions.cs`, `src/MiniBank.Api/Errors/ExceptionMapper.cs`, `tests/MiniBank.TestSupport/FakeEmailSender.cs`
+- Тесты: `tests/MiniBank.Infrastructure.Tests/AuthServiceTests.cs`, `tests/MiniBank.Api.IntegrationTests/ExceptionMapperTests.cs`
+
+**Интерфейсы:**
+- Потребляет: методы репозитория из задачи 2, `User.ChangePassword`.
+- Производит (нужно задаче 4):
+  - `Task AuthService.ForgotPasswordAsync(string? email, CancellationToken ct)`;
+  - `Task AuthService.ResetPasswordAsync(string? token, string? newPassword, CancellationToken ct)`; исключения: `DomainValidationException` (слабый пароль), `InvalidResetTokenException` (токен неизвестен, истёк или использован);
+  - `public sealed class InvalidResetTokenException() : Exception(...)` в `Exceptions.cs`; `ExceptionMapper`: статус 400, код `invalid_reset_token`;
+  - `FakeEmailSender.LastResetToken(string email)` — токен из ссылки `reset-password#token=…` в последнем письме на адрес (регулярка по образцу `LastConfirmationToken`).
+
+- [ ] **Шаг 1: Падающие тесты в `AuthServiceTests`** (используются существующие `Harness`, `FakeClock`, `FakeEmailSender`; для сервисных вызовов добавить в `Harness` методы `ForgotAsync` и `ResetAsync` по образцу `ResendAsync`):
+  - `Forgot_UnknownEmail_SendsNothingAndDoesNotThrow`, `Forgot_InvalidEmail_IsIgnored`;
+  - `Forgot_ConfirmedUser_SendsResetMailWithLinkToResetPassword` (в теле `/reset-password#token=`, срок «1 час»);
+  - `Forgot_UnconfirmedUser_AlsoSendsMail`;
+  - `Forgot_RepeatedWithinMinute_SendsOnlyOneMail`, `Forgot_AfterMinute_SendsNewMailAndOldTokenStopsWorking`;
+  - `Forgot_SmtpFailure_DoesNotThrowAndLogsNoSecrets` (лог не содержит токена и адреса);
+  - `Reset_Succeeds_OldPasswordRejectedNewAccepted`, `Reset_SetsPasswordChangedAt`;
+  - `Reset_UnconfirmedUser_ConfirmsEmailAndAllowsLogin`;
+  - `Reset_TokenIsSingleUse`, `Reset_ExpiredToken_Rejected` (через `Clock.Advance` на час);
+  - `Reset_UnknownOrEmptyToken_Rejected`;
+  - `Reset_WeakPassword_Rejected_AndTokenStillUsable`;
+  - `Reset_ConfirmationTokenIsNotAcceptedAsResetToken` и `EmailConfirmation_ResetTokenIsNotAcceptedAsConfirmationToken`;
+  - `Reset_Concurrent_SameToken_OnlyOneSucceeds` (два параллельных вызова через `Task.WhenAll`: ровно один успех, второй `InvalidResetTokenException`).
+  - В `ExceptionMapperTests`: `InvalidResetTokenException` → 400 и код `invalid_reset_token` (по образцу проверки для `InvalidConfirmationTokenException`).
+- [ ] **Шаг 2: Запустить.** `dotnet test tests/MiniBank.Infrastructure.Tests --filter "FullyQualifiedName~AuthServiceTests"` — ожидается FAIL/ошибка компиляции.
+- [ ] **Шаг 3: Реализовать** `ForgotPasswordAsync` по образцу `ResendConfirmationAsync` (транзакция, `FindByEmailForUpdateAsync`, `FindLatestResetTokenAsync`, `InvalidateOpenResetTokensAsync`, новый `PasswordResetToken`, отправка после коммита; для подтверждённых и неподтверждённых пользователей одинаково) и `ResetPasswordAsync`: пустой токен → `InvalidResetTokenException`; `PasswordPolicy.Validate(newPassword)` **до** обращения к токену; затем транзакция: `FindResetTokenByHashAsync` (`ConfirmationTokens.Hash`), проверка `IsUsableAt`, `FindByIdAsync`, `user.ChangePassword(hasher.Hash(newPassword!), now)`, `InvalidateOpenResetTokensAsync` и `InvalidateOpenTokensAsync` (токены подтверждения), `SaveChangesAsync`. Общую часть отправки письма (try/catch с логом без секретов) вынести из `SendConfirmationAsync` в приватный метод, который принимает `EmailMessage` и `userId`; письмо сброса: тема «Сброс пароля в MiniBank», ссылка `{options.WebBaseUrl}/reset-password#token={raw}`, текст про срок 1 час и «если вы не запрашивали, проигнорируйте письмо».
+- [ ] **Шаг 4: Запустить** `dotnet test tests/MiniBank.Infrastructure.Tests` и `dotnet test tests/MiniBank.Api.IntegrationTests --filter "FullyQualifiedName~ExceptionMapperTests"` — ожидается PASS.
+- [ ] **Шаг 5: Коммит** `feat(auth): сценарии «забыли пароль» и «сменить пароль»`.
+
+---
+
+### Задача 4: API и отзыв сессий
+
+**Файлы:**
+- Создать: `src/MiniBank.Api/Auth/SessionRevocation.cs`
+- Изменить: `src/MiniBank.Api/Contracts.cs`, `Controllers/AuthController.cs`, `Program.cs`
+- Тесты: `tests/MiniBank.Api.IntegrationTests/AuthEndpointsTests.cs`
+
+**Интерфейсы:**
+- Потребляет: `AuthService.ForgotPasswordAsync/ResetPasswordAsync`, `User.IsSessionRevoked`, `IUserRepository.FindByIdAsync`.
+- Производит (нужно задаче 5):
+  - `ForgotPasswordRequest(string? Email)`, `ResetPasswordRequest(string? Token, string? NewPassword)` в `Contracts.cs`;
+  - `POST /auth/forgot-password` → 202; `POST /auth/reset-password` → 204 или 400 (`invalid_reset_token` или ошибка валидации пароля), оба в `AuthController` (политика лимита запросов уже на контроллере);
+  - `internal static class SessionRevocation { public static Task CheckAsync(TokenValidatedContext context) }`, подключённый как `options.Events = new JwtBearerEvents { OnTokenValidated = SessionRevocation.CheckAsync }`.
+
+- [ ] **Шаг 1: Падающие тесты в `AuthEndpointsTests`** (по образцу существующих; для проверок отзыва использовать `ApiFactory.CreateAsync(postgres, configureServices: …)` с `FakeClock(DateTimeOffset.UtcNow)`, как в соседнем тесте с часами):
+  - `ForgotPassword_AlwaysAccepted_ForKnownUnknownAndInvalidEmail` (202 во всех случаях; письмо только для известного);
+  - `ResetPassword_FullFlow_OldPasswordFails_NewPasswordLogsIn`;
+  - `ResetPassword_InvalidToken_Returns400WithCode` (`invalid_reset_token`);
+  - `ResetPassword_WeakPassword_Returns400_AndTokenStillWorks`;
+  - `ResetPassword_RevokesTokensIssuedBefore_ButNotAfter`: войти, сдвинуть часы на 2 секунды, сбросить пароль; прежний токен даёт 401 на `/me`; токен, выданный новым входом после сброса, даёт 200; к тому же это фиксирует границу `iat` против `password_changed_at`;
+  - `ForgotPassword_IsRateLimitedLikeOtherAuthEndpoints` — по образцу существующего теста лимита для `/auth` (если такой есть в файле; иначе пропустить и записать это в сообщении коммита).
+- [ ] **Шаг 2: Запустить.** `dotnet test tests/MiniBank.Api.IntegrationTests --filter "FullyQualifiedName~AuthEndpointsTests"` — ожидается FAIL (404 на новых маршрутах).
+- [ ] **Шаг 3: Реализовать** контракты и два действия контроллера (`[ProducesResponseType]` как у соседей; `forgot-password` всегда `Accepted()`; `reset-password` возвращает `NoContent()`). `SessionRevocation.CheckAsync`: `sub` из `context.Principal` (расширение `ClaimsPrincipalExtensions`), `iat` из `((JsonWebToken)context.SecurityToken).IssuedAt`; пользователь из `IUserRepository` через `context.HttpContext.RequestServices`; если пользователь найден и `IsSessionRevoked(iat)`, вызвать `context.Fail("Token was issued before the last password change.")`. Отсутствующий пользователь не трогается.
+- [ ] **Шаг 4: Запустить** `dotnet test` (весь набор) — ожидается PASS.
+- [ ] **Шаг 5: Коммит** `feat(api): эндпоинты сброса пароля и отзыв токенов после смены пароля`.
+
+---
+
+### Задача 5: Веб-клиент
+
+**Файлы:**
+- Создать: `web/src/features/auth/ForgotPasswordPage.tsx`, `ResetPasswordPage.tsx`
+- Изменить: `web/src/api/client.ts`, `web/src/api/schema.d.ts` (регенерация), `web/src/api/errors.ts`, `features/auth/ResendConfirmation.tsx`, `LoginPage.tsx`, `auth.module.css`, `index.ts`, `web/src/app/router.tsx`
+- Тесты: `web/src/features/auth/auth.test.tsx`, `web/src/api/errors.test.ts`
+
+**Интерфейсы:**
+- Потребляет: эндпоинты задачи 4.
+- Производит: `api.forgotPassword(email: string): Promise<void>` (`POST /auth/forgot-password`), `api.resetPassword(token: string, newPassword: string): Promise<void>` (`POST /auth/reset-password`, тело `{ token, newPassword }`); маршруты `/forgot-password` и `/reset-password`; у `ResendConfirmation` новые необязательные пропсы `action?: (email: string) => Promise<void>` (по умолчанию `api.resendConfirmation`) и `sentText?: string` (по умолчанию «Письмо отправлено»).
+
+- [ ] **Шаг 1: Падающие тесты** (MSW-обработчики и вспомогательные функции — по образцу существующих тестов в `auth.test.tsx`; сетевые вызовы на `/api/auth/*`):
+  - `errors.test.ts`: код `invalid_reset_token` описывается как «Ссылка недействительна или устарела»;
+  - «Забыли пароль?» на странице входа ведёт на `/forgot-password`;
+  - форма запроса: пустой или некорректный email — ошибка поля, запрос не уходит; корректный — `POST /auth/forgot-password`, показан текст «Если такой адрес зарегистрирован, мы отправили письмо», кнопка заблокирована на 60 с (подсказка «Отправить повторно можно через N с»);
+  - `ResetPasswordPage`: открытие `/reset-password#token=abc` показывает поля «Новый пароль» и «Повторите пароль»; пароль короче 8 символов и несовпадающие пароли — ошибки полей без запроса; успех шлёт `{ token: 'abc', newPassword }` и показывает «Пароль изменён» со ссылкой «Войти»; ответ 400 с кодом `invalid_reset_token` и отсутствие токена в адресе дают экран ошибки со ссылкой «Запросить новую» на `/forgot-password`.
+- [ ] **Шаг 2: Запустить.** `npm test` в `web/` — ожидается FAIL.
+- [ ] **Шаг 3: Реализовать.** Пересобрать и запустить API (`docker compose up -d --build api`), затем `npm run gen:api` и убедиться, что в `schema.d.ts` появились два новых пути. `client.ts`: два метода. `errors.ts`: описание `invalid_reset_token`. `ResendConfirmation`: пропсы `action` и `sentText`. `ForgotPasswordPage`: логотип, заголовок «Забыли пароль?», пояснение «Укажите email, и мы пришлём ссылку для сброса», `<ResendConfirmation label="Отправить ссылку" sentText="Если такой адрес зарегистрирован, мы отправили письмо" action={api.forgotPassword} />`, ссылка «Вернуться ко входу». `ResetPasswordPage`: токен из `useLocation().hash` (как в `ConfirmEmailPage`), поля, индикатор надёжности, `useMutation(api.resetPassword)`, экраны успеха и ошибки с `StatusIcon`. `LoginPage`: ссылка «Забыли пароль?» под формой. Маршруты — в блок публичных страниц рядом с `/confirm-email`.
+- [ ] **Шаг 4: Запустить** `npm test` и `npm run build` — ожидается PASS.
+- [ ] **Шаг 5: Коммит** `feat(web): экраны «Забыли пароль» и «Новый пароль»`.
+
+---
+
+### Задача 6: Дымовая проверка и документация
+
+**Файлы:**
+- Изменить: `scripts/smoke.sh`, `README.md`
+
+- [ ] **Шаг 1: smoke.sh.** После блока входа добавить сценарий: `POST /api/auth/forgot-password` → 202; письмо с адресом из Mailpit (по образцу блока подтверждения, но токен из `reset-password#token=`); `POST /api/auth/reset-password` с новым паролем → 204; вход со старым паролем → 401; вход с новым → 200; прежний `ACCESS`-токен на `GET /api/me` → 401. Затем дальнейшие шаги smoke используют новый токен и пароль (либо сценарий вынесен в конец, перед проверкой лимита запросов, и вход под новыми данными обновляет `ACCESS`/`AUTH`).
+- [ ] **Шаг 2: Запустить.** `docker compose up -d --build --wait` и `bash scripts/smoke.sh` — ожидается успешное завершение, все строки `ok:`.
+- [ ] **Шаг 3: README.** В раздел про подтверждение email добавить «Сброс пароля»: токен на 1 час, одноразовый, хранится хэш, ответ не раскрывает адрес, сброс подтверждает email, прежние токены входа отзываются через `password_changed_at` (одна выборка пользователя на запрос; токен, выданный в ту же секунду до смены пароля, не отзывается из-за секундной точности `iat`). Добавить в список экранов веб-клиента «Забыли пароль» и «Новый пароль», в перечень проверок smoke — сброс пароля.
+- [ ] **Шаг 4: Коммит** `docs: сброс пароля в README и дымовой проверке`.
+
+---
+
+## Самопроверка
+
+- Покрытие спецификации: домен и БД (задачи 1–2), сервис (3), API и отзыв сессий (4), веб (5), smoke и README (6). «Вне объёма» не реализуется.
+- Имена согласованы между задачами: `ChangePassword`, `IsSessionRevoked`, `ForgotPasswordAsync`/`ResetPasswordAsync`, `InvalidResetTokenException`, `invalid_reset_token`, `LastResetToken`, `api.forgotPassword`/`api.resetPassword`.
+- Пропорция: код приведён только там, где его не определяют сигнатуры и тесты.
