@@ -8,10 +8,15 @@ import {
   toLimits,
   toNumber,
   toTransfer,
+  toTelegramLink,
+  toTelegramStatus,
   toUserProfile,
   type Account,
   type Entry,
   type Limits,
+  type NotificationSettings,
+  type TelegramLink,
+  type TelegramStatus,
   type Transfer,
   type UserProfile,
 } from './types'
@@ -21,7 +26,7 @@ type Schemas = components['schemas']
 const BASE = '/api'
 
 export interface RequestInitLite {
-  method?: 'GET' | 'POST' | 'PUT'
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   body?: unknown
   idempotencyKey?: string
   signal?: AbortSignal
@@ -162,6 +167,24 @@ export const api = {
   async getMe(): Promise<UserProfile> {
     const { data } = await apiRequest<Schemas['UserProfileDto']>('/me')
     return toUserProfile(data)
+  },
+
+  async getNotifications(): Promise<TelegramStatus> {
+    const { data } = await apiRequest<Schemas['TelegramStatusDto']>('/me/notifications')
+    return toTelegramStatus(data)
+  },
+
+  async createTelegramLink(): Promise<TelegramLink> {
+    const { data } = await apiRequest<Schemas['LinkDto']>('/me/notifications/telegram/link', { method: 'POST' })
+    return toTelegramLink(data)
+  },
+
+  async unlinkTelegram(): Promise<void> {
+    await apiRequest<void>('/me/notifications/telegram', { method: 'DELETE' })
+  },
+
+  async updateNotificationSettings(settings: NotificationSettings): Promise<void> {
+    await apiRequest<void>('/me/notifications/settings', { method: 'PUT', body: settings })
   },
 
   async listAccounts(): Promise<Account[]> {

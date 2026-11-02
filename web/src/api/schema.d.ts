@@ -752,6 +752,23 @@ export interface components {
             /** Format: int64 */
             daily?: number;
         };
+        NotificationSettingsDto: {
+            enabled?: boolean;
+            onTransferSent?: boolean;
+            onTransferReceived?: boolean;
+            onDeposit?: boolean;
+        };
+        TelegramStatusDto: {
+            linked?: boolean;
+            /** Format: date-time */
+            linkedAt?: string | null;
+            settings?: components["schemas"]["NotificationSettingsDto"] | null;
+        };
+        LinkDto: {
+            url?: string | null;
+            /** Format: date-time */
+            expiresAt?: string;
+        };
         UserProfileDto: {
             /** Format: uuid */
             id?: string;

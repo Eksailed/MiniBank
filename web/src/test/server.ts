@@ -8,6 +8,7 @@ import { setupServer } from 'msw/node'
 export const server = setupServer(
   http.get('/api/me', () => HttpResponse.json({ id: 'u1', email: 'alice@example.com', displayName: 'Alice' })),
   http.get('/api/accounts', () => HttpResponse.json([])),
+  http.get('/api/me/notifications', () => HttpResponse.json({ linked: false, linkedAt: null, settings: null })),
   http.get('/api/accounts/:id/limits', () =>
     HttpResponse.json({
       perOperation: 10000000,

@@ -3,6 +3,7 @@ import { api } from '../../api/client'
 import { useAuth } from '../auth'
 import { ThemeToggle } from '../../shared/ThemeToggle'
 import { Button } from '../../shared/ui'
+import { TelegramCard } from './TelegramCard'
 import styles from './ProfilePage.module.css'
 
 export function ProfilePage() {
@@ -25,6 +26,7 @@ export function ProfilePage() {
         <span>Тёмная тема</span>
         <ThemeToggle />
       </section>
+      <TelegramCard />
       <Button variant="secondary" onClick={signOut}>
         Выйти
       </Button>

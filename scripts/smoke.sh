@@ -100,8 +100,9 @@ expect_status "POST /api/transfers" 200 "${AUTH[@]}" -X POST "$BASE/api/transfer
   -H "Content-Type: application/json" -H "Idempotency-Key: smoke-transfer-$RUN" \
   -d "{\"fromAccountId\":\"$FROM\",\"toAccountId\":\"$TO\",\"amount\":30000,\"currency\":\"RUB\"}"
 
-# События пополнения и перевода: публикатор отправляет их в RabbitMQ, потребитель подтверждает (ack) оба,
-# очередь пуста, в dead-letter ничего нет. Статистика management API обновляется раз в ~5 секунд, ждём до 30.
+# События пополнения и перевода: публикатор отправляет их в RabbitMQ, оба оказываются в очереди потребителя
+# (потребитель живёт в профиле telegram и без него не запущен; его работу проверяют интеграционные тесты),
+# в dead-letter ничего нет. Статистика management API обновляется раз в ~5 секунд, ждём до 30.
 queue_field() { # <очередь> <поле>: число из JSON очереди management API
   curl -s -u "$RABBIT_USER:$RABBIT_PASSWORD" "$RABBIT/api/queues/%2F/$1" | { grep -o "\"$2\":[0-9]*" || true; } | head -n 1 | cut -d: -f2
 }
@@ -109,15 +110,15 @@ DELIVERED=0
 for _ in $(seq 1 60); do
   ACKED="$(queue_field minibank.notifications ack)"
   PENDING="$(queue_field minibank.notifications messages)"
-  if [ "${ACKED:-0}" -ge 2 ] && [ "${PENDING:-1}" = "0" ]; then
+  if [ $(( ${ACKED:-0} + ${PENDING:-0} )) -ge 2 ]; then
     DELIVERED=1
     break
   fi
   sleep 0.5
 done
-[ "$DELIVERED" = "1" ] || fail "события не дошли до потребителя (ack=${ACKED:-?}, в очереди=${PENDING:-?})"
+[ "$DELIVERED" = "1" ] || fail "события не дошли до очереди (ack=${ACKED:-?}, в очереди=${PENDING:-?})"
 [ "$(queue_field minibank.notifications.dead messages)" = "0" ] || fail "в dead-letter очереди есть сообщения"
-echo "ok: события доставлены в RabbitMQ и обработаны потребителем"
+echo "ok: события доставлены в очередь RabbitMQ"
 
 # Префикс /api снимается, query string доходит до API.
 expect_status "GET /api/accounts/{id}/entries?page=1&pageSize=5" 200 "${AUTH[@]}" \
@@ -173,6 +174,11 @@ expect_status "GET /api/me со старым токеном после смен�
 expect_status "GET /api/me с новым токеном" 200 -H "Authorization: Bearer $NEW_ACCESS" "$BASE/api/me"
 expect_status "GET /reset-password" 200 "$BASE/reset-password"
 case "$BODY" in *'id="root"'*) ;; *) fail "GET /reset-password не вернул страницу приложения" ;; esac
+
+# Уведомления в Telegram живут в отдельном профиле Compose: без него эндпоинт честно отвечает 503, а остальной API работает.
+expect_status "GET /api/me/notifications без профиля telegram" 503 -H "Authorization: Bearer $NEW_ACCESS" "$BASE/api/me/notifications"
+case "$BODY" in *notifications_unavailable*) ;; *) fail "503 уведомлений без кода notifications_unavailable" ;; esac
+expect_status "GET /api/me после 503 уведомлений" 200 -H "Authorization: Bearer $NEW_ACCESS" "$BASE/api/me"
 
 # Лимит запросов считается по адресу клиента: подделанный X-Forwarded-For извне ничего не меняет
 # (nginx дописывает настоящий адрес, API учитывает только его), поэтому 429 приходит, несмотря на разные значения.

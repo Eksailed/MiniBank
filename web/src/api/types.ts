@@ -39,6 +39,24 @@ export interface UserProfile {
   displayName: string
 }
 
+export interface NotificationSettings {
+  enabled: boolean
+  onTransferSent: boolean
+  onTransferReceived: boolean
+  onDeposit: boolean
+}
+
+export interface TelegramStatus {
+  linked: boolean
+  linkedAt: string | null
+  settings: NotificationSettings | null
+}
+
+export interface TelegramLink {
+  url: string
+  expiresAt: string
+}
+
 export interface Transfer {
   id: string
   fromAccountId: string
@@ -122,4 +140,25 @@ export function toUserProfile(dto: Schemas['UserProfileDto']): UserProfile {
     email: required(dto.email, 'email'),
     displayName: required(dto.displayName, 'displayName'),
   }
+}
+
+export function toNotificationSettings(dto: Schemas['NotificationSettingsDto']): NotificationSettings {
+  return {
+    enabled: required(dto.enabled, 'enabled'),
+    onTransferSent: required(dto.onTransferSent, 'onTransferSent'),
+    onTransferReceived: required(dto.onTransferReceived, 'onTransferReceived'),
+    onDeposit: required(dto.onDeposit, 'onDeposit'),
+  }
+}
+
+export function toTelegramStatus(dto: Schemas['TelegramStatusDto']): TelegramStatus {
+  return {
+    linked: required(dto.linked, 'linked'),
+    linkedAt: dto.linkedAt ?? null,
+    settings: dto.settings ? toNotificationSettings(dto.settings) : null,
+  }
+}
+
+export function toTelegramLink(dto: Schemas['LinkDto']): TelegramLink {
+  return { url: required(dto.url, 'url'), expiresAt: required(dto.expiresAt, 'expiresAt') }
 }
