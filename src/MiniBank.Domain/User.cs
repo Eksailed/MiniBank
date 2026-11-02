@@ -17,6 +17,7 @@ public sealed class User
     public string DisplayName { get; private set; }
     public DateTimeOffset? EmailConfirmedAt { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
+    public DateTimeOffset? PasswordChangedAt { get; private set; }
 
     public bool IsEmailConfirmed => EmailConfirmedAt is not null;
 
@@ -40,4 +41,22 @@ public sealed class User
     }
 
     public void ConfirmEmail(DateTimeOffset now) => EmailConfirmedAt = now;
+
+    /// <summary>Смена пароля по ссылке из письма: владение почтой доказано, поэтому email считается подтверждённым.</summary>
+    public void ChangePassword(string passwordHash, DateTimeOffset now)
+    {
+        if (string.IsNullOrWhiteSpace(passwordHash))
+            throw new DomainValidationException("Password hash must not be empty.");
+
+        PasswordHash = passwordHash;
+        PasswordChangedAt = now;
+        EmailConfirmedAt ??= now;
+    }
+
+    /// <summary>
+    /// Токен выдан до последней смены пароля. Сравнение по целым секундам: <c>iat</c> в JWT хранится с точностью до секунды.
+    /// </summary>
+    public bool IsSessionRevoked(DateTimeOffset tokenIssuedAt) =>
+        PasswordChangedAt is { } changedAt
+        && tokenIssuedAt.ToUnixTimeSeconds() < changedAt.ToUnixTimeSeconds();
 }
