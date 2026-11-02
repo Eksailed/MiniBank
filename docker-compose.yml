@@ -31,6 +31,22 @@ services:
       timeout: 3s
       retries: 10
 
+  # Брокер событий: AMQP 5672 доступен только внутри сети Compose, панель управления — на 127.0.0.1:15672.
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_USER:-minibank}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:-minibank-local-only}"
+    ports:
+      - "127.0.0.1:15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
   api:
     build:
       context: .
@@ -41,6 +57,9 @@ services:
       Swagger__Enabled: "true"
       # Только для локального запуска: ключ подписи JWT публичен, в любой другой среде задайте свой через JWT_KEY (от 32 байт).
       Jwt__Key: "${JWT_KEY:-local-demo-only-jwt-signing-key-change-me-0123456789}"
+      RabbitMq__Host: rabbitmq
+      RabbitMq__User: "${RABBITMQ_USER:-minibank}"
+      RabbitMq__Password: "${RABBITMQ_PASSWORD:-minibank-local-only}"
       Smtp__Host: mailpit
       Smtp__Port: "1025"
       Smtp__UseStartTls: "false"
@@ -58,6 +77,8 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      rabbitmq:
+        condition: service_healthy
     restart: unless-stopped
 
   web:
@@ -76,3 +97,4 @@ services:
 
 volumes:
   minibank-data:
+  rabbitmq-data:

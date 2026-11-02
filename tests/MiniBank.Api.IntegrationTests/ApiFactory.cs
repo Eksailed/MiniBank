@@ -62,6 +62,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Jwt:Key", JwtKey);
         builder.UseSetting("Web:BaseUrl", "https://app.test");
         builder.UseSetting("Auth:RateLimitPerMinute", "1000");
+        // Публикатор по умолчанию выключен: события пишутся в outbox, но брокер тестам API не нужен.
+        builder.UseSetting("Events:Enabled", "false");
 
         foreach (var (key, value) in _settings ?? new Dictionary<string, string?>())
             builder.UseSetting(key, value);
