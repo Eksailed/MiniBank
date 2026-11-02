@@ -317,6 +317,24 @@ public class SchemaTests(PostgresFixture postgres)
         Assert.Equal("YES", nullable);
     }
 
+    [Fact]
+    public async Task OutboxMessages_HasPartialIndexOnPendingRows()
+    {
+        var (connectionString, context) = await MigratedDatabaseAsync();
+        await using var _ = context;
+
+        var definition = (string?)await ScalarAsync(connectionString,
+            "SELECT indexdef FROM pg_indexes WHERE tablename = 'outbox_messages' AND indexname = 'ix_outbox_messages_pending'");
+        var payloadType = await ScalarAsync(connectionString,
+            "SELECT data_type FROM information_schema.columns WHERE table_name = 'outbox_messages' AND column_name = 'payload'");
+
+        Assert.NotNull(definition);
+        Assert.Contains("next_attempt_at", definition);
+        Assert.Contains("published_at IS NULL", definition);
+        Assert.Contains("dead_at IS NULL", definition);
+        Assert.Equal("jsonb", payloadType);
+    }
+
     private static async Task<object?> ScalarAsync(string connectionString, string sql)
     {
         await using var connection = new NpgsqlConnection(connectionString);

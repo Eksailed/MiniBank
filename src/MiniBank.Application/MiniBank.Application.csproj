@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\MiniBank.Domain\MiniBank.Domain.csproj" />
+    <ProjectReference Include="..\MiniBank.Contracts\MiniBank.Contracts.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -23,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniBank.Infrastructure.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniBank.Api.IntegrationTests", "tests\MiniBank.Api.IntegrationTests\MiniBank.Api.IntegrationTests.csproj", "{66554AEE-B644-46AD-AC1B-1810FE475BF8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MiniBank.Contracts", "src\MiniBank.Contracts\MiniBank.Contracts.csproj", "{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -129,6 +131,18 @@ Global
 		{66554AEE-B644-46AD-AC1B-1810FE475BF8}.Release|x64.Build.0 = Release|Any CPU
 		{66554AEE-B644-46AD-AC1B-1810FE475BF8}.Release|x86.ActiveCfg = Release|Any CPU
 		{66554AEE-B644-46AD-AC1B-1810FE475BF8}.Release|x86.Build.0 = Release|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Debug|x64.Build.0 = Debug|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Debug|x86.Build.0 = Debug|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Release|x64.ActiveCfg = Release|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Release|x64.Build.0 = Release|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Release|x86.ActiveCfg = Release|Any CPU
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -142,5 +156,6 @@ Global
 		{31A7A318-FB94-4454-86CE-D3FE99AE7F8B} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{D0D77B6D-A81D-4548-8DA1-9415B8594565} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{66554AEE-B644-46AD-AC1B-1810FE475BF8} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{AFE8A5BD-8AF5-40BC-A106-D62D0327A0C7} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

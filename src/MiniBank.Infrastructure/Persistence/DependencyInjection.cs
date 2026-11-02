@@ -23,6 +23,7 @@ public static class DependencyInjection
         services.AddScoped<ILedgerQuery, LedgerQuery>();
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IIdempotencyStore, IdempotencyStore>();
+        services.AddScoped<IOutbox, Outbox>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddSingleton(TimeProvider.System);

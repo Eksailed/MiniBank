@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using MiniBank.Application.Abstractions;
 using MiniBank.Application.Limits;
+using MiniBank.Contracts;
 using MiniBank.Domain;
 
 namespace MiniBank.Application;
@@ -11,6 +12,7 @@ public sealed class TransfersService(
     ITransferRepository transfers,
     IUnitOfWork uow,
     ILedgerQuery ledger,
+    IOutbox outbox,
     IdempotencyExecutor idempotency,
     TimeProvider clock)
 {
@@ -40,7 +42,8 @@ public sealed class TransfersService(
             var spentToday = await ledger.GetSpentSinceAsync(fromId, LimitPolicy.StartOfDay(clock.GetUtcNow()), token);
             from.EnsureCanSpend(money.Amount, spentToday);
 
-            return await ExecuteAsync(from, to, money, token);
+            return await ExecuteAsync(from, to, money, t => new TransferCompleted(
+                t.Id, t.FromAccountId, t.ToAccountId, from.UserId!.Value, to.UserId, t.Amount, t.Currency), token);
         }, ct);
     }
 
@@ -63,7 +66,8 @@ public sealed class TransfersService(
                 throw new TransferNotAllowedException("System accounts cannot be deposited to.");
             var cash = locked.GetValueOrDefault(cashId) ?? throw new AccountNotFoundException(cashId);
 
-            return await ExecuteAsync(cash, account, money, token);
+            return await ExecuteAsync(cash, account, money, t => new AccountDeposited(
+                t.Id, account.Id, account.UserId!.Value, t.Amount, t.Currency), token);
         }, ct);
     }
 
@@ -77,10 +81,13 @@ public sealed class TransfersService(
     private static string Hash(string canonicalRequest) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonicalRequest)));
 
-    private async Task<TransferDto> ExecuteAsync(Account from, Account to, Money money, CancellationToken ct)
+    private async Task<TransferDto> ExecuteAsync(
+        Account from, Account to, Money money, Func<Transfer, IntegrationEvent> toEvent, CancellationToken ct)
     {
         var transfer = Transfer.Execute(from, to, money, clock.GetUtcNow());
         transfers.Add(transfer);
+        // Событие уходит в БД вместе с переводом одним SaveChanges: откат операции откатывает и его.
+        outbox.Add(toEvent(transfer), transfer.CreatedAt);
         await uow.SaveChangesAsync(ct);
         return new TransferDto(
             transfer.Id, transfer.FromAccountId, transfer.ToAccountId, transfer.Amount, transfer.Currency, transfer.CreatedAt);
