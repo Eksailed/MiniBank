@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MiniBank.Messaging;
+using MiniBank.Notifications.Linking;
 using MiniBank.Notifications.Telegram;
 
 namespace MiniBank.Notifications;
@@ -30,6 +31,8 @@ public static class NotificationsServiceCollectionExtensions
         services.AddHttpClient<ITelegramClient, TelegramClient>(c => c.Timeout = Timeout.InfiniteTimeSpan);
         services.AddSingleton<DeliveryBatchProcessor>();
         services.AddHostedService<DeliverySender>();
+        services.AddSingleton<LinkService>();
+        services.AddHostedService<BotPoller>();
         return services;
     }
 
