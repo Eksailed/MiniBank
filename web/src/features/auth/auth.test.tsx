@@ -454,6 +454,26 @@ describe('password reset', () => {
     expect(screen.getByRole('link', { name: 'Запросить новую' })).toHaveAttribute('href', '/forgot-password')
   })
 
+  it('removes the token from the address bar but still uses it', async () => {
+    const bodies: unknown[] = []
+    server.use(
+      http.post('/api/auth/reset-password', async ({ request }) => {
+        bodies.push(await request.json())
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    const user = userEvent.setup()
+    const { router } = renderApp('/reset-password#token=abc', { token: null })
+
+    await user.type(await screen.findByLabelText('Новый пароль'), 'long-enough-1')
+    await user.type(screen.getByLabelText('Повторите пароль'), 'long-enough-1')
+    expect(router.state.location.hash).toBe('')
+    await user.click(screen.getByRole('button', { name: 'Сменить пароль' }))
+
+    expect(await screen.findByText('Пароль изменён')).toBeInTheDocument()
+    expect(bodies).toEqual([{ token: 'abc', newPassword: 'long-enough-1' }])
+  })
+
   it('treats a link without a token as invalid', async () => {
     renderApp('/reset-password', { token: null })
 

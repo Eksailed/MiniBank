@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
-import { useState, type FormEvent } from 'react'
-import { Link, useLocation } from 'react-router'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router'
 import { api } from '../../api/client'
 import { ApiError } from '../../api/errors'
 import { Button, ErrorNotice, TextField } from '../../shared/ui'
@@ -16,8 +16,13 @@ interface FieldErrors {
 
 export function ResetPasswordPage() {
   // Токен лежит во фрагменте (#token=…), как на странице подтверждения: на сервер он уходит только в теле POST.
-  const { hash } = useLocation()
-  const token = new URLSearchParams(hash.replace(/^#/, '')).get('token')?.trim() ?? ''
+  // Запоминаем его и убираем из адресной строки, чтобы он не остался в истории браузера.
+  const { hash, pathname, search } = useLocation()
+  const navigate = useNavigate()
+  const [token] = useState(() => new URLSearchParams(hash.replace(/^#/, '')).get('token')?.trim() ?? '')
+  useEffect(() => {
+    if (hash !== '') navigate({ pathname, search }, { replace: true })
+  }, [hash, pathname, search, navigate])
   const [password, setPassword] = useState('')
   const [repeat, setRepeat] = useState('')
   const [errors, setErrors] = useState<FieldErrors>({})
