@@ -18,6 +18,8 @@ public sealed class EmailTakenException() : Exception("Email is already register
 
 public sealed class InvalidConfirmationTokenException() : Exception("The confirmation token is invalid, expired or already used.");
 
+public sealed class InvalidResetTokenException() : Exception("The password reset token is invalid, expired or already used.");
+
 public sealed class InvalidCredentialsException() : Exception("Invalid email or password.");
 
 public sealed class EmailNotConfirmedException() : Exception("Email is not confirmed.");

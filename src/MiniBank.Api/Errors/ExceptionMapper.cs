@@ -7,7 +7,7 @@ public static class ExceptionMapper
 {
     public static int ToStatusCode(Exception ex) => ex switch
     {
-        DomainValidationException or InvalidConfirmationTokenException => StatusCodes.Status400BadRequest,
+        DomainValidationException or InvalidConfirmationTokenException or InvalidResetTokenException => StatusCodes.Status400BadRequest,
         InvalidCredentialsException => StatusCodes.Status401Unauthorized,
         EmailNotConfirmedException => StatusCodes.Status403Forbidden,
         InsufficientFundsException or AccountBlockedException or TransferNotAllowedException
@@ -27,6 +27,7 @@ public static class ExceptionMapper
         DailyLimitExceededException => "daily_limit_exceeded",
         EmailTakenException => "email_taken",
         InvalidConfirmationTokenException => "invalid_confirmation_token",
+        InvalidResetTokenException => "invalid_reset_token",
         InvalidCredentialsException => "invalid_credentials",
         EmailNotConfirmedException => "email_not_confirmed",
         _ => null

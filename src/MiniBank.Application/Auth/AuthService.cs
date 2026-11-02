@@ -105,6 +105,66 @@ public sealed class AuthService(
             await SendConfirmationAsync(outgoing.UserId, outgoing.Email, outgoing.DisplayName, outgoing.RawToken, ct);
     }
 
+    /// <summary>
+    /// Отправляет ссылку для сброса пароля. Как и повторное подтверждение, никогда не сообщает, есть ли такой пользователь:
+    /// неизвестный адрес или слишком частый запрос просто ничего не делает. Подтверждённость email не требуется.
+    /// </summary>
+    public async Task ForgotPasswordAsync(string? email, CancellationToken ct)
+    {
+        if (!TryNormalizeEmail(email, out var normalizedEmail))
+            return;
+
+        var outgoing = await unitOfWork.ExecuteInTransactionAsync<OutgoingConfirmation?>(async innerCt =>
+        {
+            var now = clock.GetUtcNow();
+            var user = await users.FindByEmailForUpdateAsync(normalizedEmail, innerCt);
+            if (user is null)
+                return null;
+
+            var latest = await users.FindLatestResetTokenAsync(user.Id, innerCt);
+            if (latest is not null && now - latest.CreatedAt < ResendInterval)
+                return null;
+
+            await users.InvalidateOpenResetTokensAsync(user.Id, now, innerCt);
+            var (raw, hash) = ConfirmationTokens.Generate();
+            users.Add(PasswordResetToken.Create(user.Id, hash, now));
+            await unitOfWork.SaveChangesAsync(innerCt);
+            return new OutgoingConfirmation(user.Id, user.Email, user.DisplayName, raw);
+        }, ct);
+
+        if (outgoing is not null)
+            await SendResetAsync(outgoing.UserId, outgoing.Email, outgoing.DisplayName, outgoing.RawToken, ct);
+    }
+
+    /// <exception cref="DomainValidationException">Новый пароль не прошёл проверку (токен при этом не расходуется).</exception>
+    /// <exception cref="InvalidResetTokenException">Токен неизвестен, истёк или уже использован.</exception>
+    public async Task ResetPasswordAsync(string? token, string? newPassword, CancellationToken ct)
+    {
+        PasswordPolicy.Validate(newPassword);
+        if (string.IsNullOrWhiteSpace(token))
+            throw new InvalidResetTokenException();
+
+        var hash = ConfirmationTokens.Hash(token.Trim());
+        var passwordHash = hasher.Hash(newPassword!);
+
+        await unitOfWork.ExecuteInTransactionAsync(async innerCt =>
+        {
+            var now = clock.GetUtcNow();
+            var stored = await users.FindResetTokenByHashAsync(hash, innerCt);
+            if (stored is null || !stored.IsUsableAt(now))
+                throw new InvalidResetTokenException();
+
+            var user = await users.FindByIdAsync(stored.UserId, innerCt)
+                ?? throw new InvalidResetTokenException();
+
+            user.ChangePassword(passwordHash, now);
+            await users.InvalidateOpenResetTokensAsync(user.Id, now, innerCt);
+            await users.InvalidateOpenTokensAsync(user.Id, now, innerCt);
+            await unitOfWork.SaveChangesAsync(innerCt);
+            return 0;
+        }, ct);
+    }
+
     /// <exception cref="InvalidCredentialsException">Неверный email или пароль (ответ один и тот же в обоих случаях).</exception>
     /// <exception cref="EmailNotConfirmedException">Пароль верный, но email не подтверждён.</exception>
     public async Task<AccessToken> LoginAsync(string? email, string? password, CancellationToken ct)
@@ -148,7 +208,7 @@ public sealed class AuthService(
     }
 
     /// <summary>Сбой отправки не откатывает регистрацию: пользователь может запросить письмо повторно.</summary>
-    private async Task SendConfirmationAsync(Guid userId, string email, string displayName, string rawToken, CancellationToken ct)
+    private Task SendConfirmationAsync(Guid userId, string email, string displayName, string rawToken, CancellationToken ct)
     {
         var link = $"{options.WebBaseUrl}/confirm-email#token={rawToken}";
         var message = new EmailMessage(
@@ -157,7 +217,23 @@ public sealed class AuthService(
             $"Здравствуйте, {displayName}!\n\n" +
             $"Чтобы подтвердить email в MiniBank, откройте ссылку:\n{link}\n\n" +
             "Ссылка действует 24 часа. Если вы не регистрировались, просто проигнорируйте это письмо.\n");
+        return TrySendAsync(message, userId, "подтверждения", ct);
+    }
 
+    private Task SendResetAsync(Guid userId, string email, string displayName, string rawToken, CancellationToken ct)
+    {
+        var link = $"{options.WebBaseUrl}/reset-password#token={rawToken}";
+        var message = new EmailMessage(
+            email,
+            "Сброс пароля в MiniBank",
+            $"Здравствуйте, {displayName}!\n\n" +
+            $"Чтобы задать новый пароль в MiniBank, откройте ссылку:\n{link}\n\n" +
+            "Ссылка действует 1 час. Если вы не запрашивали сброс пароля, просто проигнорируйте это письмо: пароль останется прежним.\n");
+        return TrySendAsync(message, userId, "сброса пароля", ct);
+    }
+
+    private async Task TrySendAsync(EmailMessage message, Guid userId, string kind, CancellationToken ct)
+    {
         try
         {
             await emailSender.SendAsync(message, ct);
@@ -165,8 +241,8 @@ public sealed class AuthService(
         catch (Exception ex)
         {
             // В лог — без токена, ссылки и адреса: письмо содержит секрет, адрес — персональные данные.
-            logger.LogWarning("Не удалось отправить письмо подтверждения пользователю {UserId}: {ErrorType}",
-                userId, ex.GetType().Name);
+            logger.LogWarning("Не удалось отправить письмо {Kind} пользователю {UserId}: {ErrorType}",
+                kind, userId, ex.GetType().Name);
         }
     }
 

@@ -98,6 +98,20 @@ public class AuthServiceTests(PostgresFixture postgres)
                 return 0;
             });
 
+        public Task ForgotAsync(string? email) =>
+            WithAsync(async sp =>
+            {
+                await sp.GetRequiredService<AuthService>().ForgotPasswordAsync(email, default);
+                return 0;
+            });
+
+        public Task ResetAsync(string? token, string? newPassword) =>
+            WithAsync(async sp =>
+            {
+                await sp.GetRequiredService<AuthService>().ResetPasswordAsync(token, newPassword, default);
+                return 0;
+            });
+
         public Task<AccessToken> LoginAsync(string? email, string? password) =>
             WithAsync(sp => sp.GetRequiredService<AuthService>().LoginAsync(email, password, default));
 
@@ -458,5 +472,241 @@ public class AuthServiceTests(PostgresFixture postgres)
         Assert.False(hasher.Verify(first, "wrong-password"));
         Assert.False(hasher.Verify(hasher.DummyHash, Password));
         Assert.Equal(hasher.DummyHash, hasher.DummyHash);
+    }
+
+    private const string NewPassword = "brand-new-pass-2";
+
+    [Fact]
+    public async Task Forgot_UnknownEmail_SendsNothingAndDoesNotThrow()
+    {
+        var h = await CreateAsync();
+
+        await h.ForgotAsync("nobody@b.co");
+
+        Assert.Empty(h.Email.Sent);
+        Assert.Equal(0, await h.QueryAsync(db => db.PasswordResetTokens.CountAsync()));
+    }
+
+    [Theory]
+    [InlineData("not-an-email")]
+    [InlineData("")]
+    [InlineData(null)]
+    public async Task Forgot_InvalidEmail_IsIgnored(string? email)
+    {
+        var h = await CreateAsync();
+
+        await h.ForgotAsync(email);
+
+        Assert.Empty(h.Email.Sent);
+    }
+
+    [Fact]
+    public async Task Forgot_ConfirmedUser_SendsResetMailWithLinkToResetPassword()
+    {
+        var h = await CreateAsync();
+        await h.RegisterAndConfirmAsync("a@b.co");
+
+        await h.ForgotAsync(" A@B.co ");
+
+        var message = h.Email.Sent.Last();
+        var token = h.Email.LastResetToken("a@b.co");
+        Assert.Equal("Сброс пароля в MiniBank", message.Subject);
+        Assert.Contains($"https://app.test/reset-password#token={token}", message.Body);
+        Assert.Contains("1 час", message.Body);
+        var stored = Assert.Single(await h.QueryAsync(db => db.PasswordResetTokens.ToListAsync()));
+        Assert.Equal(ConfirmationTokens.Hash(token), stored.TokenHash);
+        Assert.Equal(Start.AddHours(1), stored.ExpiresAt);
+    }
+
+    [Fact]
+    public async Task Forgot_UnconfirmedUser_AlsoSendsMail()
+    {
+        var h = await CreateAsync();
+        await h.RegisterAsync("a@b.co");
+        var before = h.Email.Sent.Count;
+
+        await h.ForgotAsync("a@b.co");
+
+        Assert.Equal(before + 1, h.Email.Sent.Count);
+        Assert.Equal("Сброс пароля в MiniBank", h.Email.Sent.Last().Subject);
+    }
+
+    [Fact]
+    public async Task Forgot_RepeatedWithinMinute_SendsOnlyOneMail()
+    {
+        var h = await CreateAsync();
+        await h.RegisterAndConfirmAsync("a@b.co");
+        var before = h.Email.Sent.Count;
+
+        await h.ForgotAsync("a@b.co");
+        h.Clock.Advance(TimeSpan.FromSeconds(59));
+        await h.ForgotAsync("a@b.co");
+
+        Assert.Equal(before + 1, h.Email.Sent.Count);
+    }
+
+    [Fact]
+    public async Task Forgot_AfterMinute_SendsNewMailAndOldTokenStopsWorking()
+    {
+        var h = await CreateAsync();
+        await h.RegisterAndConfirmAsync("a@b.co");
+        await h.ForgotAsync("a@b.co");
+        var first = h.Email.LastResetToken("a@b.co");
+        h.Clock.Advance(TimeSpan.FromSeconds(61));
+
+        await h.ForgotAsync("a@b.co");
+        var second = h.Email.LastResetToken("a@b.co");
+
+        Assert.NotEqual(first, second);
+        await Assert.ThrowsAsync<InvalidResetTokenException>(() => h.ResetAsync(first, NewPassword));
+        await h.ResetAsync(second, NewPassword);
+    }
+
+    [Fact]
+    public async Task Forgot_SmtpFailure_DoesNotThrowAndLogsNoSecrets()
+    {
+        var h = await CreateAsync();
+        await h.RegisterAndConfirmAsync("alice@example.com");
+        h.Email.FailWith = new InvalidOperationException("smtp down");
+
+        await h.ForgotAsync("alice@example.com");
+
+        var token = h.Email.LastResetToken("alice@example.com");
+        var logged = h.Log.Messages;
+        Assert.NotEmpty(logged);
+        Assert.All(logged, m =>
+        {
+            Assert.DoesNotContain(token, m);
+            Assert.DoesNotContain("reset-password", m);
+            Assert.DoesNotContain("alice@example.com", m);
+        });
+    }
+
+    private async Task<(Harness H, string Token)> ForgottenAsync(string email = "a@b.co", bool confirm = true)
+    {
+        var h = await CreateAsync();
+        if (confirm)
+            await h.RegisterAndConfirmAsync(email);
+        else
+            await h.RegisterAsync(email);
+        await h.ForgotAsync(email);
+        return (h, h.Email.LastResetToken(email));
+    }
+
+    [Fact]
+    public async Task Reset_Succeeds_OldPasswordRejectedNewAccepted()
+    {
+        var (h, token) = await ForgottenAsync();
+
+        await h.ResetAsync(token, NewPassword);
+
+        await Assert.ThrowsAsync<InvalidCredentialsException>(() => h.LoginAsync("a@b.co", Password));
+        Assert.NotNull(await h.LoginAsync("a@b.co", NewPassword));
+    }
+
+    [Fact]
+    public async Task Reset_SetsPasswordChangedAt()
+    {
+        var (h, token) = await ForgottenAsync();
+        h.Clock.Advance(TimeSpan.FromMinutes(5));
+
+        await h.ResetAsync(token, NewPassword);
+
+        var user = await h.QueryAsync(db => db.Users.SingleAsync());
+        Assert.Equal(Start.AddMinutes(5), user.PasswordChangedAt);
+    }
+
+    [Fact]
+    public async Task Reset_UnconfirmedUser_ConfirmsEmailAndAllowsLogin()
+    {
+        var (h, token) = await ForgottenAsync(confirm: false);
+
+        await h.ResetAsync(token, NewPassword);
+
+        Assert.True((await h.QueryAsync(db => db.Users.SingleAsync())).IsEmailConfirmed);
+        Assert.NotNull(await h.LoginAsync("a@b.co", NewPassword));
+        Assert.Equal(0, await h.QueryAsync(db => db.EmailConfirmationTokens.CountAsync(t => t.UsedAt == null)));
+    }
+
+    [Fact]
+    public async Task Reset_TokenIsSingleUse()
+    {
+        var (h, token) = await ForgottenAsync();
+        await h.ResetAsync(token, NewPassword);
+
+        await Assert.ThrowsAsync<InvalidResetTokenException>(() => h.ResetAsync(token, "another-pass-3"));
+
+        Assert.NotNull(await h.LoginAsync("a@b.co", NewPassword));
+    }
+
+    [Fact]
+    public async Task Reset_ExpiredToken_Rejected()
+    {
+        var (h, token) = await ForgottenAsync();
+        h.Clock.Advance(TimeSpan.FromHours(1));
+
+        await Assert.ThrowsAsync<InvalidResetTokenException>(() => h.ResetAsync(token, NewPassword));
+
+        Assert.NotNull(await h.LoginAsync("a@b.co", Password));
+    }
+
+    [Theory]
+    [InlineData("unknown-token")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public async Task Reset_UnknownOrEmptyToken_Rejected(string? token)
+    {
+        var (h, _) = await ForgottenAsync();
+
+        await Assert.ThrowsAsync<InvalidResetTokenException>(() => h.ResetAsync(token, NewPassword));
+    }
+
+    [Theory]
+    [InlineData("short1")]
+    [InlineData("")]
+    [InlineData(null)]
+    public async Task Reset_WeakPassword_Rejected_AndTokenStillUsable(string? weak)
+    {
+        var (h, token) = await ForgottenAsync();
+
+        await Assert.ThrowsAsync<DomainValidationException>(() => h.ResetAsync(token, weak));
+
+        await h.ResetAsync(token, NewPassword);
+    }
+
+    [Fact]
+    public async Task Reset_ConfirmationTokenIsNotAcceptedAsResetToken_AndViceVersa()
+    {
+        var h = await CreateAsync();
+        await h.RegisterAsync("a@b.co");
+        var confirmation = h.Email.LastConfirmationToken("a@b.co");
+        h.Clock.Advance(TimeSpan.FromSeconds(61));
+        await h.ForgotAsync("a@b.co");
+        var reset = h.Email.LastResetToken("a@b.co");
+
+        await Assert.ThrowsAsync<InvalidResetTokenException>(() => h.ResetAsync(confirmation, NewPassword));
+        await Assert.ThrowsAsync<InvalidConfirmationTokenException>(() => h.ConfirmAsync(reset));
+    }
+
+    [Fact]
+    public async Task Reset_ParallelRequests_SameToken_OnlyOneSucceeds()
+    {
+        var (h, token) = await ForgottenAsync();
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 2).Select(i => Task.Run(async () =>
+        {
+            try
+            {
+                await h.ResetAsync(token, $"parallel-pass-{i}");
+                return true;
+            }
+            catch (InvalidResetTokenException)
+            {
+                return false;
+            }
+        })));
+
+        Assert.Equal(1, results.Count(r => r));
     }
 }

@@ -37,17 +37,25 @@ public sealed partial class FakeEmailSender : IEmailSender
         return FailWith is { } failure ? Task.FromException(failure) : Task.CompletedTask;
     }
 
-    /// <summary>Токен из ссылки в последнем письме на этот адрес.</summary>
-    public string LastConfirmationToken(string email)
+    /// <summary>Токен подтверждения из ссылки в последнем письме на этот адрес.</summary>
+    public string LastConfirmationToken(string email) => LastToken(email, ConfirmationPattern(), "confirmation");
+
+    /// <summary>Токен сброса пароля из ссылки в последнем письме на этот адрес.</summary>
+    public string LastResetToken(string email) => LastToken(email, ResetPattern(), "password reset");
+
+    private string LastToken(string email, Regex pattern, string kind)
     {
         var message = Attempted.LastOrDefault(m => string.Equals(m.To, email, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException($"No email was sent to {email}.");
-        var match = TokenPattern().Match(message.Body);
+        var match = pattern.Match(message.Body);
         return match.Success
             ? match.Groups[1].Value
-            : throw new InvalidOperationException("The email has no confirmation link.");
+            : throw new InvalidOperationException($"The email has no {kind} link.");
     }
 
     [GeneratedRegex(@"confirm-email#token=([A-Za-z0-9_-]+)")]
-    private static partial Regex TokenPattern();
+    private static partial Regex ConfirmationPattern();
+
+    [GeneratedRegex(@"reset-password#token=([A-Za-z0-9_-]+)")]
+    private static partial Regex ResetPattern();
 }
