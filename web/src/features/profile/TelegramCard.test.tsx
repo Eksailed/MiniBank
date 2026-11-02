@@ -70,10 +70,13 @@ describe('TelegramCard', () => {
 
   it('привязано: переключатель отправляет полный объект настроек', async () => {
     let body: unknown
+    let saved = settings
     server.use(
-      http.get('/api/me/notifications', () => HttpResponse.json(linked)),
+      // Сервер хранит сохранённое: после PUT повторный GET (invalidate) должен вернуть уже новые настройки.
+      http.get('/api/me/notifications', () => HttpResponse.json({ ...linked, settings: saved })),
       http.put('/api/me/notifications/settings', async ({ request }) => {
         body = await request.json()
+        saved = body as typeof settings
         return new HttpResponse(null, { status: 204 })
       }),
     )
