@@ -115,6 +115,41 @@ case "$BODY" in *'id="root"'*) ;; *) fail "GET /accounts/{id} не вернул 
 expect_status "GET /confirm-email" 200 "$BASE/confirm-email"
 case "$BODY" in *'id="root"'*) ;; *) fail "GET /confirm-email не вернул страницу приложения" ;; esac
 
+# Сброс пароля: запрос письма, новый пароль, отзыв прежних токенов входа.
+expect_status "POST /api/auth/forgot-password" 202 -X POST "$BASE/api/auth/forgot-password" \
+  -H "Content-Type: application/json" -d "{\"email\":\"$EMAIL\"}"
+
+# Письмо со ссылкой сброса отличаем от письма подтверждения по адресу ссылки: <Web__BaseUrl>/reset-password#token=…
+RESET_TOKEN=""
+for _ in $(seq 1 30); do
+  for ID in $(curl -s -G "$MAILPIT/api/v1/search" --data-urlencode "query=to:$EMAIL" | grep -o '"ID":"[^"]*"' | cut -d'"' -f4); do
+    RESET_TOKEN="$(curl -s "$MAILPIT/api/v1/message/$ID" | sed -n 's/.*reset-password#token=\([A-Za-z0-9_-]*\).*/\1/p')"
+    [ -n "$RESET_TOKEN" ] && break
+  done
+  [ -n "$RESET_TOKEN" ] && break
+  sleep 0.5
+done
+[ -n "$RESET_TOKEN" ] || fail "письмо со ссылкой сброса пароля не пришло в Mailpit"
+echo "ok: письмо сброса пароля пришло в Mailpit"
+
+# Токен входа хранит время выдачи с точностью до секунды: ждём, чтобы смена пароля была строго позже.
+sleep 2
+NEW_PASSWORD="new-$PASSWORD"
+expect_status "POST /api/auth/reset-password" 204 -X POST "$BASE/api/auth/reset-password" \
+  -H "Content-Type: application/json" -d "{\"token\":\"$RESET_TOKEN\",\"newPassword\":\"$NEW_PASSWORD\"}"
+expect_status "POST /api/auth/reset-password повторно тем же токеном" 400 -X POST "$BASE/api/auth/reset-password" \
+  -H "Content-Type: application/json" -d "{\"token\":\"$RESET_TOKEN\",\"newPassword\":\"$NEW_PASSWORD\"}"
+expect_status "POST /api/auth/login со старым паролем" 401 -X POST "$BASE/api/auth/login" \
+  -H "Content-Type: application/json" -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
+expect_status "POST /api/auth/login с новым паролем" 200 -X POST "$BASE/api/auth/login" \
+  -H "Content-Type: application/json" -d "{\"email\":\"$EMAIL\",\"password\":\"$NEW_PASSWORD\"}"
+NEW_ACCESS="$(printf '%s' "$BODY" | json_field accessToken)"
+[ -n "$NEW_ACCESS" ] || fail "в ответе входа с новым паролем нет accessToken"
+expect_status "GET /api/me со старым токеном после смены пароля" 401 "${AUTH[@]}" "$BASE/api/me"
+expect_status "GET /api/me с новым токеном" 200 -H "Authorization: Bearer $NEW_ACCESS" "$BASE/api/me"
+expect_status "GET /reset-password" 200 "$BASE/reset-password"
+case "$BODY" in *'id="root"'*) ;; *) fail "GET /reset-password не вернул страницу приложения" ;; esac
+
 # Лимит запросов считается по адресу клиента: подделанный X-Forwarded-For извне ничего не меняет
 # (nginx дописывает настоящий адрес, API учитывает только его), поэтому 429 приходит, несмотря на разные значения.
 LIMITED=0
