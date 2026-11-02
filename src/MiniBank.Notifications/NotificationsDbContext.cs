@@ -11,6 +11,10 @@ public class NotificationsDbContext(DbContextOptions<NotificationsDbContext> opt
 
     public DbSet<ProcessedEvent> ProcessedEvents => Set<ProcessedEvent>();
     public DbSet<ReceivedEvent> ReceivedEvents => Set<ReceivedEvent>();
+    public DbSet<TelegramLink> TelegramLinks => Set<TelegramLink>();
+    public DbSet<LinkCode> LinkCodes => Set<LinkCode>();
+    public DbSet<NotificationSettings> NotificationSettings => Set<NotificationSettings>();
+    public DbSet<TelegramDelivery> TelegramDeliveries => Set<TelegramDelivery>();
 
     public static void Configure(DbContextOptionsBuilder builder, string connectionString) =>
         builder.UseNpgsql(connectionString, npgsql => npgsql.MigrationsHistoryTable("__EFMigrationsHistory", Schema));
@@ -46,6 +50,43 @@ public class NotificationsDbContext(DbContextOptions<NotificationsDbContext> opt
             e.Property(x => x.Type).HasMaxLength(100).IsRequired();
             e.HasIndex(x => new { x.EventId, x.OwnerId }).IsUnique();
             e.HasIndex(x => x.OwnerId);
+        });
+
+        modelBuilder.Entity<TelegramLink>(e =>
+        {
+            e.ToTable("telegram_links");
+            e.HasKey(x => x.UserId);
+            e.Property(x => x.UserId).ValueGeneratedNever();
+            e.HasIndex(x => x.ChatId).IsUnique();
+        });
+
+        modelBuilder.Entity<LinkCode>(e =>
+        {
+            e.ToTable("link_codes");
+            e.HasKey(x => x.CodeHash);
+            e.Property(x => x.CodeHash).HasMaxLength(64);
+            e.HasIndex(x => x.UserId);
+        });
+
+        modelBuilder.Entity<NotificationSettings>(e =>
+        {
+            e.ToTable("notification_settings");
+            e.HasKey(x => x.UserId);
+            e.Property(x => x.UserId).ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<TelegramDelivery>(e =>
+        {
+            e.ToTable("telegram_deliveries");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).ValueGeneratedNever();
+            e.Property(x => x.Text).HasMaxLength(500).IsRequired();
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            e.Property(x => x.LastError).HasMaxLength(2000);
+            e.HasOne<ReceivedEvent>().WithMany().HasForeignKey(x => x.ReceivedEventId).OnDelete(DeleteBehavior.Cascade);
+            e.HasIndex(x => x.ReceivedEventId).IsUnique();
+            e.HasIndex(x => x.NextAttemptAt).HasDatabaseName("ix_telegram_deliveries_pending")
+                .HasFilter("status = 'Pending'");
         });
     }
 }

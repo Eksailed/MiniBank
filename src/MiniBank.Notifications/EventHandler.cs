@@ -38,17 +38,34 @@ public sealed class EventHandler(IDbContextFactory<NotificationsDbContext> dbFac
 
         var now = DateTimeOffset.UtcNow;
         db.ProcessedEvents.Add(new ProcessedEvent { EventId = envelope.EventId, ProcessedAt = now });
+        var ownerIds = owners.Select(o => o.OwnerId).ToList();
+        var links = await db.TelegramLinks.Where(l => ownerIds.Contains(l.UserId)).ToDictionaryAsync(l => l.UserId, ct);
+        var settings = await db.NotificationSettings.Where(s => ownerIds.Contains(s.UserId)).ToDictionaryAsync(s => s.UserId, ct);
         foreach (var owner in owners)
         {
-            db.ReceivedEvents.Add(new ReceivedEvent
+            var received = new ReceivedEvent
             {
                 Id = Guid.NewGuid(),
                 EventId = envelope.EventId,
                 Type = envelope.Type,
-                OwnerId = owner,
+                OwnerId = owner.OwnerId,
                 OccurredAt = envelope.OccurredAt,
                 ReceivedAt = now,
-            });
+            };
+            db.ReceivedEvents.Add(received);
+
+            // Доставка ставится в очередь в той же транзакции: событие не теряется и не дублируется.
+            if (links.TryGetValue(owner.OwnerId, out var link) && IsAllowed(settings.GetValueOrDefault(owner.OwnerId), owner.Kind))
+            {
+                db.TelegramDeliveries.Add(new TelegramDelivery
+                {
+                    Id = Guid.NewGuid(),
+                    ReceivedEventId = received.Id,
+                    ChatId = link.ChatId,
+                    Text = owner.Text,
+                    NextAttemptAt = now,
+                });
+            }
         }
 
         try
@@ -82,7 +99,19 @@ public sealed class EventHandler(IDbContextFactory<NotificationsDbContext> dbFac
         return envelope;
     }
 
-    private static IReadOnlyList<Guid> ParseOwners(EventEnvelope envelope)
+    private static bool IsAllowed(NotificationSettings? settings, NoticeKind kind) =>
+        settings is null || (settings.Enabled && kind switch
+        {
+            NoticeKind.TransferSent => settings.OnTransferSent,
+            NoticeKind.TransferReceived => settings.OnTransferReceived,
+            _ => settings.OnDeposit,
+        });
+
+    private enum NoticeKind { TransferSent, TransferReceived, Deposit }
+
+    private sealed record OwnerNotice(Guid OwnerId, NoticeKind Kind, string Text);
+
+    private static IReadOnlyList<OwnerNotice> ParseOwners(EventEnvelope envelope)
     {
         try
         {
@@ -91,14 +120,16 @@ public sealed class EventHandler(IDbContextFactory<NotificationsDbContext> dbFac
                 var transfer = envelope.Data.Deserialize<TransferCompleted>(EventJson.Options)
                     ?? throw new MalformedEventException("The event data is empty.");
                 // Перевод между своими счетами даёт одного владельца: уведомление одно.
+                var sent = new OwnerNotice(transfer.FromOwnerId, NoticeKind.TransferSent,
+                    MessageText.TransferSent(transfer.Amount, transfer.Currency));
                 return transfer.ToOwnerId is { } to && to != transfer.FromOwnerId
-                    ? [transfer.FromOwnerId, to]
-                    : [transfer.FromOwnerId];
+                    ? [sent, new OwnerNotice(to, NoticeKind.TransferReceived, MessageText.TransferReceived(transfer.Amount, transfer.Currency))]
+                    : [sent];
             }
 
             var deposit = envelope.Data.Deserialize<AccountDeposited>(EventJson.Options)
                 ?? throw new MalformedEventException("The event data is empty.");
-            return [deposit.OwnerId];
+            return [new OwnerNotice(deposit.OwnerId, NoticeKind.Deposit, MessageText.Deposit(deposit.Amount, deposit.Currency))];
         }
         catch (JsonException ex)
         {

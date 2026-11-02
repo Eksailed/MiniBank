@@ -181,7 +181,7 @@ public class EventConsumerTests(PostgresFixture postgres, RabbitMqFixture rabbit
         var (db, consumer) = await StartAsync();
         await using var _ = consumer;
         await using (var context = db.CreateDbContext())
-            await context.Database.ExecuteSqlRawAsync("DROP TABLE notifications.received_events");
+            await context.Database.ExecuteSqlRawAsync("DROP TABLE notifications.received_events CASCADE");
         var eventId = Guid.NewGuid();
 
         await PublishAsync(Body(eventId, EventTypes.TransferCompleted, Transfer(Guid.NewGuid(), null)), eventId);
@@ -234,7 +234,7 @@ public class EventConsumerTests(PostgresFixture postgres, RabbitMqFixture rabbit
         await using (var context = db.CreateDbContext())
         {
             await context.Database.MigrateAsync();
-            await context.Database.ExecuteSqlRawAsync("DROP TABLE notifications.received_events");
+            await context.Database.ExecuteSqlRawAsync("DROP TABLE notifications.received_events CASCADE");
         }
 
         var handler = new EventHandler(db, NullLogger<EventHandler>.Instance);

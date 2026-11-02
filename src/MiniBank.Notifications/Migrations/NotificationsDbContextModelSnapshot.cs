@@ -23,6 +23,58 @@ namespace MiniBank.Notifications.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("MiniBank.Notifications.LinkCode", b =>
+                {
+                    b.Property<string>("CodeHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("CodeHash")
+                        .HasName("pk_link_codes");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_link_codes_user_id");
+
+                    b.ToTable("link_codes", "notifications");
+                });
+
+            modelBuilder.Entity("MiniBank.Notifications.NotificationSettings", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("enabled");
+
+                    b.Property<bool>("OnDeposit")
+                        .HasColumnType("boolean")
+                        .HasColumnName("on_deposit");
+
+                    b.Property<bool>("OnTransferReceived")
+                        .HasColumnType("boolean")
+                        .HasColumnName("on_transfer_received");
+
+                    b.Property<bool>("OnTransferSent")
+                        .HasColumnType("boolean")
+                        .HasColumnName("on_transfer_sent");
+
+                    b.HasKey("UserId")
+                        .HasName("pk_notification_settings");
+
+                    b.ToTable("notification_settings", "notifications");
+                });
+
             modelBuilder.Entity("MiniBank.Notifications.ProcessedEvent", b =>
                 {
                     b.Property<Guid>("EventId")
@@ -78,6 +130,97 @@ namespace MiniBank.Notifications.Migrations
                         .HasDatabaseName("ix_received_events_event_id_owner_id");
 
                     b.ToTable("received_events", "notifications");
+                });
+
+            modelBuilder.Entity("MiniBank.Notifications.TelegramDelivery", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("chat_id");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<Guid>("ReceivedEventId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("received_event_id");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("text");
+
+                    b.HasKey("Id")
+                        .HasName("pk_telegram_deliveries");
+
+                    b.HasIndex("NextAttemptAt")
+                        .HasDatabaseName("ix_telegram_deliveries_pending")
+                        .HasFilter("status = 'Pending'");
+
+                    b.HasIndex("ReceivedEventId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_telegram_deliveries_received_event_id");
+
+                    b.ToTable("telegram_deliveries", "notifications");
+                });
+
+            modelBuilder.Entity("MiniBank.Notifications.TelegramLink", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<long>("ChatId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("chat_id");
+
+                    b.Property<DateTimeOffset>("LinkedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("linked_at");
+
+                    b.HasKey("UserId")
+                        .HasName("pk_telegram_links");
+
+                    b.HasIndex("ChatId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_telegram_links_chat_id");
+
+                    b.ToTable("telegram_links", "notifications");
+                });
+
+            modelBuilder.Entity("MiniBank.Notifications.TelegramDelivery", b =>
+                {
+                    b.HasOne("MiniBank.Notifications.ReceivedEvent", null)
+                        .WithMany()
+                        .HasForeignKey("ReceivedEventId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_telegram_deliveries_received_events_received_event_id");
                 });
 #pragma warning restore 612, 618
         }
