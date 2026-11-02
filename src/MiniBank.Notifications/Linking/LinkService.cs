@@ -30,6 +30,8 @@ public sealed class LinkService(IDbContextFactory<NotificationsDbContext> dbFact
 
         await using var db = await dbFactory.CreateDbContextAsync(ct);
         await using var tx = await db.Database.BeginTransactionAsync(ct);
+        // Параллельные запросы одного пользователя выстраиваются в очередь: активным остаётся ровно один код.
+        await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtextextended({userId.ToString()}, 0))", ct);
         await db.LinkCodes.Where(c => c.UserId == userId || c.ExpiresAt <= now).ExecuteDeleteAsync(ct);
         db.LinkCodes.Add(new LinkCode { CodeHash = Hash(code), UserId = userId, ExpiresAt = expiresAt });
         await db.SaveChangesAsync(ct);

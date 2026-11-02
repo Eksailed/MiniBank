@@ -83,6 +83,18 @@ public class LinkServiceTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task CreateCode_Concurrent_LeavesSingleActiveCode()
+    {
+        var (db, _, service) = await SetupAsync();
+        var user = Guid.NewGuid();
+
+        await Task.WhenAll(Enumerable.Range(0, 12).Select(_ => service.CreateCodeAsync(user, default)));
+
+        await using var check = db.CreateDbContext();
+        Assert.Equal(1, await check.LinkCodes.CountAsync(c => c.UserId == user));
+    }
+
+    [Fact]
     public async Task Redeem_SecondUse_Fails()
     {
         var (_, _, service) = await SetupAsync();
