@@ -3,12 +3,14 @@ using MiniBank.Contracts;
 using MiniBank.Infrastructure.Persistence;
 using MiniBank.Messaging;
 using RabbitMQ.Client;
+using RabbitMQ.Client.Exceptions;
 
 namespace MiniBank.Infrastructure.Events;
 
 /// <summary>Публикует строки outbox в обменник <c>minibank.events</c> с подтверждением брокера (publisher confirms).</summary>
 public sealed class RabbitMqOutboxSink(RabbitMqOptions options) : IOutboxSink, IAsyncDisposable
 {
+    private static readonly TimeSpan PublishTimeout = TimeSpan.FromSeconds(30);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private IConnection? _connection;
     private IChannel? _channel;
@@ -28,11 +30,25 @@ public sealed class RabbitMqOutboxSink(RabbitMqOptions options) : IOutboxSink, I
         await _gate.WaitAsync(ct);
         try
         {
-            var channel = await EnsureChannelAsync(ct);
+            // Без тайм-аута зависший confirm (например, при блокировке брокера по памяти) держал бы транзакцию с блокировками строк.
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(PublishTimeout);
+            var channel = await EnsureChannelAsync(timeout.Token);
             await channel.BasicPublishAsync(
-                RabbitMqTopology.Exchange, message.Type, mandatory: false, basicProperties: properties, body: body, cancellationToken: ct);
+                RabbitMqTopology.Exchange, message.Type, mandatory: false, basicProperties: properties, body: body, cancellationToken: timeout.Token);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (PublishException)
+        {
+            // Брокер ответил nack на это сообщение: ошибка строки, а не брокера.
+            await ResetAsync();
+            throw;
+        }
+        catch (Exception ex) when (!ct.IsCancellationRequested)
+        {
+            await ResetAsync();
+            throw new BrokerUnavailableException("Брокер недоступен или не подтвердил публикацию", ex);
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
         {
             await ResetAsync();
             throw;

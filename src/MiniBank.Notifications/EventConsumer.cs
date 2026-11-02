@@ -1,6 +1,8 @@
+using System.Net.Sockets;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using MiniBank.Messaging;
+using Npgsql;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 
@@ -20,6 +22,7 @@ public sealed class EventConsumer(RabbitMqOptions options, EventHandler handler,
     private const ushort Prefetch = 10;
     private static readonly TimeSpan ReconnectDelay = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan UnavailableDelay = TimeSpan.FromSeconds(2);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -79,10 +82,33 @@ public sealed class EventConsumer(RabbitMqOptions options, EventHandler handler,
         {
             // Остановка: без подтверждения брокер вернёт сообщение в очередь.
         }
+        catch (Exception ex) when (IsDatabaseUnavailable(ex))
+        {
+            // Отказ инфраструктуры, а не сообщения: в dead-letter не отправляем, возвращаем в очередь после паузы.
+            logger.LogWarning("Database is unavailable ({ErrorType}); message {MessageId} returned to the queue",
+                ex.GetType().Name, messageId);
+            await Task.Delay(UnavailableDelay, ct);
+            await channel.BasicNackAsync(delivery.DeliveryTag, multiple: false, requeue: true, ct);
+        }
         catch (Exception ex)
         {
             await RetryOrDeadLetterAsync(channel, delivery, ex, ct);
         }
+    }
+
+    private static bool IsDatabaseUnavailable(Exception ex)
+    {
+        for (var e = ex; e is not null; e = e.InnerException!)
+        {
+            if (e is PostgresException)
+                return false; // ошибка конкретного запроса (схема, ограничение), а не недоступность БД
+            if (e is NpgsqlException or SocketException or TimeoutException)
+                return true;
+            if (e.InnerException is null)
+                return false;
+        }
+
+        return false;
     }
 
     private async Task RetryOrDeadLetterAsync(IChannel channel, BasicDeliverEventArgs delivery, Exception ex, CancellationToken ct)

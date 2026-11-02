@@ -194,6 +194,39 @@ public class EventConsumerTests(PostgresFixture postgres, RabbitMqFixture rabbit
     }
 
     [Fact]
+    public async Task DatabaseUnavailable_DoesNotDeadLetterAndProcessesAfterRecovery()
+    {
+        var connectionString = await postgres.CreateDatabaseAsync();
+        var good = new Factory(connectionString);
+        await using (var context = good.CreateDbContext())
+            await context.Database.MigrateAsync();
+        var downString = new Npgsql.NpgsqlConnectionStringBuilder(connectionString) { Host = "127.0.0.1", Port = 1, Timeout = 1 }.ConnectionString;
+        var switchable = new SwitchableFactory(new Factory(downString));
+
+        await rabbit.ResetAsync();
+        var consumer = new EventConsumer(rabbit.Options, new EventHandler(switchable, NullLogger<EventHandler>.Instance), NullLogger<EventConsumer>.Instance);
+        await consumer.StartAsync(CancellationToken.None);
+        await using var _ = new Running(consumer);
+        var eventId = Guid.NewGuid();
+
+        await PublishAsync(Body(eventId, EventTypes.TransferCompleted, Transfer(Guid.NewGuid(), null)), eventId);
+        await Task.Delay(TimeSpan.FromSeconds(8)); // дольше всех повторов с паузами
+
+        Assert.Equal(0u, await rabbit.MessageCountAsync(RabbitMqTopology.DeadQueue));
+
+        switchable.Inner = good;
+        await EventuallyAsync(async () => await ProcessedCountAsync(good) == 1, "обработано после восстановления БД");
+        Assert.Equal(0u, await rabbit.MessageCountAsync(RabbitMqTopology.DeadQueue));
+    }
+
+    private sealed class SwitchableFactory(IDbContextFactory<NotificationsDbContext> inner) : IDbContextFactory<NotificationsDbContext>
+    {
+        public IDbContextFactory<NotificationsDbContext> Inner { get; set; } = inner;
+
+        public NotificationsDbContext CreateDbContext() => Inner.CreateDbContext();
+    }
+
+    [Fact]
     public async Task ProcessedAndReceivedAreAtomic()
     {
         var connectionString = await postgres.CreateDatabaseAsync();

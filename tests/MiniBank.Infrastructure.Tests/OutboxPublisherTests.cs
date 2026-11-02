@@ -119,7 +119,8 @@ public class OutboxPublisherTests(PostgresFixture postgres, RabbitMqFixture rabb
         Assert.All(failed, r =>
         {
             Assert.Null(r.PublishedAt);
-            Assert.Equal(1, r.Attempts);
+            Assert.Null(r.DeadAt);
+            Assert.Equal(0, r.Attempts);
         });
 
         clock.Advance(TimeSpan.FromMinutes(1));
@@ -129,6 +130,38 @@ public class OutboxPublisherTests(PostgresFixture postgres, RabbitMqFixture rabb
 
         Assert.All(await RowsAsync(connectionString), r => Assert.NotNull(r.PublishedAt));
         Assert.Equal(2, (await rabbit.TakeAsync(RabbitMqTopology.Queue, 2)).Count);
+    }
+
+    [Fact]
+    public async Task BrokerUnavailable_AbortsBatchWithoutBurningAttemptsOrKillingRows()
+    {
+        var connectionString = await DatabaseAsync();
+        var ids = await SeedAsync(connectionString, 3);
+        var clock = new FakeClock(Now);
+        var calls = 0;
+        var sink = new FakeSink((m, _) =>
+        {
+            calls++;
+            return m.Id == ids[0] ? Task.CompletedTask : throw new BrokerUnavailableException("брокер лежит", new IOException());
+        });
+
+        // Простой дольше, чем набирается MaxAttempts: строки не должны стать «мёртвыми».
+        for (var i = 0; i < 15; i++)
+        {
+            await using var db = NewContext(connectionString);
+            await Processor(db, Options(maxAttempts: 3), clock).ProcessBatchAsync(sink, default);
+            clock.Advance(TimeSpan.FromMinutes(10));
+        }
+
+        var rows = (await RowsAsync(connectionString)).ToDictionary(r => r.Id);
+        Assert.NotNull(rows[ids[0]].PublishedAt);
+        Assert.All(new[] { ids[1], ids[2] }, id =>
+        {
+            Assert.Null(rows[id].DeadAt);
+            Assert.Null(rows[id].PublishedAt);
+            Assert.Equal(0, rows[id].Attempts);
+        });
+        Assert.Equal(1 + 15, calls); // на каждом проходе пробуем только первую неотправленную строку
     }
 
     [Fact]

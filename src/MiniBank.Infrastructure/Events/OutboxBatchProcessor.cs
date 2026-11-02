@@ -33,22 +33,34 @@ public sealed class OutboxBatchProcessor(
                 """)
             .ToListAsync(ct);
 
+        var published = 0; // обработано: опубликовано или отложено после ошибки строки
         foreach (var row in rows)
         {
             try
             {
                 await sink.PublishAsync(row, ct);
                 row.PublishedAt = now;
+                published++;
+            }
+            catch (BrokerUnavailableException ex)
+            {
+                // Брокер недоступен целиком: попытки не тратим и остальные строки не трогаем.
+                var error = $"{ex.InnerException?.GetType().Name ?? ex.GetType().Name}: {ex.Message}";
+                row.LastError = error.Length > MaxErrorLength ? error[..MaxErrorLength] : error;
+                logger.LogWarning("Broker is unavailable ({ErrorType}); batch aborted, {Left} rows left for next pass",
+                    ex.InnerException?.GetType().Name ?? ex.GetType().Name, rows.Count - published);
+                break;
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 RegisterFailure(row, ex, now);
+                published++;
             }
         }
 
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
-        return rows.Count;
+        return published;
     }
 
     /// <summary>Удаляет опубликованные строки старше срока хранения (небольшой пачкой).</summary>
