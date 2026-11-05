@@ -1,4 +1,8 @@
-# MiniBank: события, outbox и RabbitMQ. План реализации
+# События банка: outbox и RabbitMQ — план реализации
+
+Статус: выполнено (этап 5).
+
+Связано: спецификация [2026-11-02-minibank-events-outbox-design.md](../specs/2026-11-02-minibank-events-outbox-design.md).
 
 > **Для исполнителя:** используйте superpowers:subagent-driven-development (рекомендуется) или superpowers:executing-plans. Шаги отмечены чекбоксами (`- [ ]`).
 
@@ -20,7 +24,7 @@
 - В логах только `eventId`, `type`, номер попытки; `/health` от брокера не зависит.
 - Запуск тестов: `dotnet test` (нужен Docker: PostgreSQL и RabbitMQ через Testcontainers).
 
-## Review Focus
+## Review Focus: на что смотреть при ревью
 
 Случаи, которые не выводятся из спецификации прямо, но могут навредить; у каждого есть тест в указанной задаче.
 

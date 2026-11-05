@@ -1,4 +1,8 @@
-# MiniBank: сброс пароля. План реализации
+# Сброс пароля: план реализации
+
+Статус: выполнено.
+
+Связано: спецификация [2026-11-02-minibank-password-reset-design.md](../specs/2026-11-02-minibank-password-reset-design.md).
 
 > **Для исполнителя:** используйте superpowers:subagent-driven-development (рекомендуется) или superpowers:executing-plans. Шаги отмечены чекбоксами (`- [ ]`).
 
@@ -20,7 +24,7 @@
 - Тексты интерфейса на русском, стили через CSS Modules и токены темы из `tokens.css`.
 - Запуск тестов: `dotnet test` (нужен Docker для PostgreSQL через testcontainers/fixture) и `npm test` в `web/`.
 
-## Review Focus
+## Review Focus: на что смотреть при ревью
 
 Случаи, которые не выводятся из спецификации прямо, но могут навредить; у каждого есть тест в указанной задаче.
 

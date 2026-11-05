@@ -1,4 +1,8 @@
-# План реализации: безопасность и функции MiniBank (этап 4)
+# Безопасность: план реализации (этап 4)
+
+Статус: выполнено.
+
+Связано: спецификация [2026-11-01-minibank-security-design.md](../specs/2026-11-01-minibank-security-design.md).
 
 > **Для исполнителя:** ОБЯЗАТЕЛЬНЫЙ САБ-СКИЛЛ — superpowers:subagent-driven-development (рекомендуется) или superpowers:executing-plans. Шаги отмечены чекбоксами (`- [ ]`).
 

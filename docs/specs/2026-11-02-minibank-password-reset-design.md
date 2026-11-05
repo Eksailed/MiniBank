@@ -1,4 +1,8 @@
-# MiniBank: сброс пароля. Дизайн
+# Сброс пароля по письму со ссылкой
+
+Статус: сделано.
+
+Связано: план [2026-11-02-minibank-password-reset.md](../plans/2026-11-02-minibank-password-reset.md); повторяет подтверждение email из [безопасности](2026-11-01-minibank-security-design.md).
 
 ## Цель
 

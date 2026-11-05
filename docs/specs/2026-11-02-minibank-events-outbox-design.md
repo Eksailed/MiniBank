@@ -1,4 +1,8 @@
-# MiniBank: события, outbox и RabbitMQ. Дизайн
+# События банка: outbox и доставка через RabbitMQ
+
+Статус: сделано (этап 5).
+
+Связано: план [2026-11-02-minibank-events-outbox.md](../plans/2026-11-02-minibank-events-outbox.md); потребитель событий — [Telegram](2026-11-02-minibank-telegram-notifications-design.md).
 
 ## Цель
 

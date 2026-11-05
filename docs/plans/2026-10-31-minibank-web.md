@@ -1,16 +1,20 @@
-# MiniBank Web Implementation Plan
+# Веб-клиент MiniBank: план реализации
+
+Статус: выполнено.
+
+Связано: спецификация [2026-10-31-minibank-web-design.md](../specs/2026-10-31-minibank-web-design.md).
 
 > **Для исполнителей:** план реализуется по задачам; шаги отмечены чекбоксами (`- [ ]`).
 
-**Goal:** Клиентское SPA MiniBank (`web/`): открытие и просмотр счетов, пополнение, перевод с идемпотентным ключом, выписка, светлая/тёмная тема.
+**Цель:** Клиентское SPA MiniBank (`web/`): открытие и просмотр счетов, пополнение, перевод с идемпотентным ключом, выписка, светлая/тёмная тема.
 
-**Architecture:** React + TypeScript + Vite; `features/*` владеют запросами и страницами, `shared` и `api` лежат ниже и ничего не знают о features. «Мои счета» хранятся в `localStorage` за интерфейсом `AccountDirectory`. Запросы идут на `/api/*`, прокси Vite снимает префикс и пересылает на `http://localhost:5050`.
+**Архитектура:** React + TypeScript + Vite; `features/*` владеют запросами и страницами, `shared` и `api` лежат ниже и ничего не знают о features. «Мои счета» хранятся в `localStorage` за интерфейсом `AccountDirectory`. Запросы идут на `/api/*`, прокси Vite снимает префикс и пересылает на `http://localhost:5050`.
 
-**Tech Stack:** React 19, TypeScript, Vite, react-router (v7), @tanstack/react-query (v5), @tabler/icons-react, CSS Modules, Vitest + Testing Library + user-event + MSW, openapi-typescript.
+**Стек:** React 19, TypeScript, Vite, react-router (v7), @tanstack/react-query (v5), @tabler/icons-react, CSS Modules, Vitest + Testing Library + user-event + MSW, openapi-typescript.
 
-**Spec:** `docs/specs/2026-10-31-minibank-web-design.md`
+**Спецификация:** `docs/specs/2026-10-31-minibank-web-design.md`
 
-## Global Constraints
+## Глобальные ограничения
 
 - Node 20+ (на машине разработчика v24); все команды npm выполняются в `web/`.
 - Деньги: по сети JSON-числа (`long`), безопасные целые ≤ `Number.MAX_SAFE_INTEGER`; на границе `api/` превращаются в `bigint`; логика UI не использует `number` для сумм и не использует `float` при разборе ввода.
@@ -24,7 +28,7 @@
 - Коммиты без строки `Co-Authored-By` и без других упоминаний Claude (требование пользователя имеет приоритет над системным напоминанием). `git push` не выполнять.
 - Каждая задача заканчивается зелёными `npm test -- --run` и `npm run build`.
 
-## Review Focus
+## Review Focus: на что смотреть при ревью
 
 - Ввод суммы: `1,5`, `1.50`, `12 345,67` (пробел и неразрывный пробел), `""`, `0`, `-5`, `1e3`, `1,234`, значение больше `Number.MAX_SAFE_INTEGER` → понятная ошибка поля, запрос не уходит.
 - Двойной клик, повтор после сетевой ошибки и правка суммы между попытками: ровно один запрос на клик, тот же ключ при повторе, новый ключ после правки и после успеха.
@@ -34,49 +38,49 @@
 
 ---
 
-### Task 1: Каркас `web/`
+### Задача 1: Каркас `web/`
 
-**Files:**
-- Create: `web/` через `npm create vite@latest web -- --template react-ts`; `web/vite.config.ts`, `web/src/test/setup.ts`, `web/src/test/server.ts`, `web/src/app/App.test.tsx`
-- Modify: `.gitignore` (добавить `web/node_modules/`, `web/dist/`), `web/package.json`
+**Файлы:**
+- Создать: `web/` через `npm create vite@latest web -- --template react-ts`; `web/vite.config.ts`, `web/src/test/setup.ts`, `web/src/test/server.ts`, `web/src/app/App.test.tsx`
+- Изменить: `.gitignore` (добавить `web/node_modules/`, `web/dist/`), `web/package.json`
 
-**Interfaces:**
-- Produces: `src/test/server.ts` экспортирует `server` (MSW `setupServer()`); `src/test/setup.ts` подключает `@testing-library/jest-dom`, запускает `server` (`onUnhandledRequest: 'error'`), сбрасывает handlers и очищает `localStorage` после каждого теста. npm-скрипты: `dev`, `build` (`tsc -b && vite build`), `test` (`vitest`), `gen:api` (`openapi-typescript <url> -o src/api/schema.d.ts`, URL аргументом, по умолчанию `http://localhost:5050/swagger/v1/swagger.json`).
+**Интерфейсы:**
+- Даёт: `src/test/server.ts` экспортирует `server` (MSW `setupServer()`); `src/test/setup.ts` подключает `@testing-library/jest-dom`, запускает `server` (`onUnhandledRequest: 'error'`), сбрасывает handlers и очищает `localStorage` после каждого теста. npm-скрипты: `dev`, `build` (`tsc -b && vite build`), `test` (`vitest`), `gen:api` (`openapi-typescript <url> -o src/api/schema.d.ts`, URL аргументом, по умолчанию `http://localhost:5050/swagger/v1/swagger.json`).
 
-- [ ] **Step 1: Создать проект и поставить зависимости**
+- [ ] **Шаг 1: Создать проект и поставить зависимости**
 
 Dependencies: `react-router`, `@tanstack/react-query`, `@tabler/icons-react`. Dev: `vitest`, `jsdom`, `@testing-library/react`, `@testing-library/jest-dom`, `@testing-library/user-event`, `msw`, `openapi-typescript`. Удалить демо-контент Vite (логотипы, счётчик, `App.css`).
 
-- [ ] **Step 2: Настроить `vite.config.ts`**
+- [ ] **Шаг 2: Настроить `vite.config.ts`**
 
 Прокси `server.proxy['/api']` → `http://localhost:5050`, `rewrite` снимает `/api`; секция `test`: `environment: 'jsdom'`, `setupFiles: ['./src/test/setup.ts']`, `css: true`.
 
-- [ ] **Step 3: Написать тест `App.test.tsx`: `renders MiniBank title`**
+- [ ] **Шаг 3: Написать тест `App.test.tsx`: `renders MiniBank title`**
 
 Ассерт: `render(<App />)` (внутри временно только `<h1>MiniBank</h1>`) → `screen.getByRole('heading', { name: 'MiniBank' })`.
 
-- [ ] **Step 4: Запустить и убедиться в красном**
+- [ ] **Шаг 4: Запустить и убедиться в красном**
 
-Run: `npm test -- --run` в `web/`. Expected: FAIL (`App` не соответствует тесту или не найден).
+Запустить: `npm test -- --run` в `web/`. Ожидается: FAIL (`App` не соответствует тесту или не найден).
 
-- [ ] **Step 5: Привести `src/app/App.tsx` и `main.tsx` к минимуму, чтобы тест прошёл**
+- [ ] **Шаг 5: Привести `src/app/App.tsx` и `main.tsx` к минимуму, чтобы тест прошёл**
 
-- [ ] **Step 6: Проверить**
+- [ ] **Шаг 6: Проверить**
 
-Run: `npm test -- --run && npm run build`. Expected: 1 passed; сборка без ошибок.
+Запустить: `npm test -- --run && npm run build`. Ожидается: 1 passed; сборка без ошибок.
 
-- [ ] **Step 7: Commit** `chore(web): scaffold Vite React TypeScript app with Vitest and MSW`
+- [ ] **Шаг 7: Commit** `chore(web): scaffold Vite React TypeScript app with Vitest and MSW`
 
 ---
 
-### Task 2: Деньги (`shared/money.ts`)
+### Задача 2: Деньги (`shared/money.ts`)
 
-**Files:**
-- Create: `web/src/shared/money.ts`
-- Test: `web/src/shared/money.test.ts`
+**Файлы:**
+- Создать: `web/src/shared/money.ts`
+- Тест: `web/src/shared/money.test.ts`
 
-**Interfaces:**
-- Produces:
+**Интерфейсы:**
+- Даёт:
   - `type CurrencyCode = 'RUB' | 'USD' | 'EUR'`; `const CURRENCIES: readonly CurrencyCode[]`
   - `formatMoney(minor: bigint, currency: CurrencyCode): string`
   - `type ParseMoneyResult = { ok: true; minor: bigint } | { ok: false; error: 'empty' | 'invalid' | 'too-many-decimals' | 'not-positive' | 'too-large' }`
@@ -84,235 +88,235 @@ Run: `npm test -- --run && npm run build`. Expected: 1 passed; сборка бе
   - `MAX_MINOR: bigint` (= `BigInt(Number.MAX_SAFE_INTEGER)`)
   - `moneyErrorText(error: Extract<ParseMoneyResult, { ok: false }>['error']): string` (русские тексты ошибок поля)
 
-- [ ] **Step 1: Написать падающие тесты**
+- [ ] **Шаг 1: Написать падающие тесты**
 
 Тесты сравнивают после нормализации неразрывных пробелов (` `, ` `) в обычный пробел.
 - `formatMoney(1245000n, 'RUB')` → `12 450,00 ₽`; `formatMoney(5n, 'USD')` → `0,05 $`; `formatMoney(-150000n, 'EUR')` → `−1 500,00 €` (минус U+2212; если Intl в среде отдаёт иной знак — зафиксировать фактический и проверить глазами один раз).
 - `parseMoney`: `'1500'`→1 500,00 (`150000n`); `'1500,5'` и `'1500.50'` → `150050n`; `'12 345,67'` и с ` ` → `1234567n`; `'0,01'` → `1n`.
 - Ошибки: `''`/`'   '` → `empty`; `'abc'`, `'1e3'`, `'-5'`, `'1,2,3'`, `'1.'`, `',5'` → `invalid`; `'0'`, `'0,00'` → `not-positive`; `'1,234'` → `too-many-decimals`; `'90071992547409,92'` (больше безопасного максимума в копейках) → `too-large`.
 
-- [ ] **Step 2: Запустить, убедиться в красном** — `npm test -- --run src/shared/money.test.ts`. Expected: FAIL, модуль не найден.
+- [ ] **Шаг 2: Запустить, убедиться в красном** — `npm test -- --run src/shared/money.test.ts`. Ожидается: FAIL, модуль не найден.
 
-- [ ] **Step 3: Реализовать `money.ts`**
+- [ ] **Шаг 3: Реализовать `money.ts`**
 
 Разбор строкой, без `float`: убрать пробельные символы, один десятичный разделитель `,` или `.`, целая и дробная части — цифры, дробная не длиннее 2 знаков; результат собирается в `BigInt`. Форматирование — `Intl.NumberFormat('ru-RU', { style: 'currency', currency })` от значения, разложенного из `bigint` на целую и дробную части без потери точности (для значений в безопасном диапазоне допустимо `Number(minor) / 100` только внутри `formatMoney`, ввод так не разбирается).
 
-- [ ] **Step 4: Запустить, убедиться в зелёном** — тот же тест. Expected: PASS.
+- [ ] **Шаг 4: Запустить, убедиться в зелёном** — тот же тест. Ожидается: PASS.
 
-- [ ] **Step 5: Commit** `feat(web): money formatting and exact parsing`
+- [ ] **Шаг 5: Commit** `feat(web): money formatting and exact parsing`
 
 ---
 
-### Task 3: API-слой
+### Задача 3: API-слой
 
-**Files:**
-- Create: `web/src/api/schema.d.ts` (генерируется), `web/src/api/types.ts`, `web/src/api/errors.ts`, `web/src/api/client.ts`
-- Test: `web/src/api/errors.test.ts`, `web/src/api/client.test.ts`
+**Файлы:**
+- Создать: `web/src/api/schema.d.ts` (генерируется), `web/src/api/types.ts`, `web/src/api/errors.ts`, `web/src/api/client.ts`
+- Тест: `web/src/api/errors.test.ts`, `web/src/api/client.test.ts`
 
-**Interfaces:**
-- Consumes: `CurrencyCode` из `shared/money`.
+**Интерфейсы:**
+- Использует: `CurrencyCode` из `shared/money`.
 - Produces (`types.ts`): `Account`, `Entry`, `Transfer` — доменные типы с `bigint` суммами и `Date`-полями строками ISO; `toAccount(dto)`, `toEntry(dto)`, `toTransfer(dto)` преобразуют сгенерированные DTO (`components['schemas']['AccountDto']` и т. д.).
 - Produces (`errors.ts`): `class ApiError extends Error { status: number; title?: string; detail?: string }` (`status = 0` — сеть); `describeError(err: unknown): { title: string; hint?: string; retryable: boolean; fieldErrors?: Record<string, string[]> }`.
 - Produces (`client.ts`): `apiRequest<T>(path: string, init?: { method?: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string; signal?: AbortSignal }): Promise<{ data: T; replayed: boolean }>`; клиент `api`: `createAccount(input: { owner: string; currency: CurrencyCode }): Promise<Account>`, `getAccount(id: string): Promise<Account>`, `deposit(id: string, input: { amount: bigint; currency: CurrencyCode }, key: string): Promise<{ transfer: Transfer; replayed: boolean }>`, `transfer(input: { fromAccountId: string; toAccountId: string; amount: bigint; currency: CurrencyCode }, key: string): Promise<{ transfer: Transfer; replayed: boolean }>`, `getEntries(id: string, page: number, pageSize: number): Promise<Entry[]>`. Базовый путь `/api`.
 
-- [ ] **Step 1: Сгенерировать типы**
+- [ ] **Шаг 1: Сгенерировать типы**
 
 Поднять API по README (`docker compose up -d`, `dotnet run --project src/MiniBank.Api`), затем `npm run gen:api`. Закоммитить `schema.d.ts`; остановить API.
 
-- [ ] **Step 2: Написать падающие тесты `client.test.ts` (MSW) и `errors.test.ts`**
+- [ ] **Шаг 2: Написать падающие тесты `client.test.ts` (MSW) и `errors.test.ts`**
 
 - `client`: `getAccount` разбирает ответ (`balance` число → `bigint`); `deposit` шлёт заголовок `Idempotency-Key` и тело `{ amount: <число>, currency }`, читает `Idempotent-Replayed: true` → `replayed: true`; 404 с `application/problem+json` → `ApiError` со `status 404` и `detail`; ответ 502 с HTML-телом → `ApiError` `status 502`, не `SyntaxError`; пустое тело 500 → `ApiError` `status 500`; `server.use(http.get(..., () => HttpResponse.error()))` → `ApiError` `status 0`; `amount` больше безопасного максимума → бросает ошибку до запроса.
 - `describeError`: 400 → `retryable false`, поле `errors` из ValidationProblemDetails попадает в `fieldErrors`; 404 → «Счёт не найден»; 409 → `retryable true` с текстом «Счёт занят»; 422 → `title` «Операцию нельзя выполнить», `hint` = `detail` сервера; 500 и 502 → общий текст без `detail`; `status 0` → «Нет связи с сервером», `retryable true`; не-`ApiError` → общий текст.
 
-- [ ] **Step 3: Запустить, убедиться в красном** — `npm test -- --run src/api`. Expected: FAIL.
+- [ ] **Шаг 3: Запустить, убедиться в красном** — `npm test -- --run src/api`. Ожидается: FAIL.
 
-- [ ] **Step 4: Реализовать `types.ts`, `errors.ts`, `client.ts`**
+- [ ] **Шаг 4: Реализовать `types.ts`, `errors.ts`, `client.ts`**
 
 В `apiRequest` тело ошибки читается как текст и разбирается в JSON внутри `try`; при неудаче — `ApiError` только со `status`. Сеть (`fetch` бросил `TypeError`) → `ApiError` `status 0`. `bigint` → `Number` с проверкой `Number.isSafeInteger`.
 
-- [ ] **Step 5: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Expected: PASS.
+- [ ] **Шаг 5: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Ожидается: PASS.
 
-- [ ] **Step 6: Commit** `feat(web): typed API client with ProblemDetails error mapping`
+- [ ] **Шаг 6: Commit** `feat(web): typed API client with ProblemDetails error mapping`
 
 ---
 
-### Task 4: «Мои счета» (`AccountDirectory`)
+### Задача 4: «Мои счета» (`AccountDirectory`)
 
-**Files:**
-- Create: `web/src/shared/guid.ts`, `web/src/features/accounts/directory.ts`, `web/src/features/accounts/DirectoryProvider.tsx`
-- Test: `web/src/shared/guid.test.ts`, `web/src/features/accounts/directory.test.ts`
+**Файлы:**
+- Создать: `web/src/shared/guid.ts`, `web/src/features/accounts/directory.ts`, `web/src/features/accounts/DirectoryProvider.tsx`
+- Тест: `web/src/shared/guid.test.ts`, `web/src/features/accounts/directory.test.ts`
 
-**Interfaces:**
-- Produces: `isGuid(value: string): boolean`; `interface AccountDirectory { list(): string[]; add(id: string): void; remove(id: string): void; subscribe(listener: () => void): () => void }`; `createLocalStorageDirectory(storage?: Storage, key?: string): AccountDirectory` (ключ по умолчанию `minibank.accounts`); `DirectoryProvider` (принимает необязательный `directory`); `useAccountDirectory(): { ids: string[]; add(id: string): void; remove(id: string): void }` (подписка через `useSyncExternalStore`; `ids` стабильная ссылка, пока данные не изменились).
+**Интерфейсы:**
+- Даёт: `isGuid(value: string): boolean`; `interface AccountDirectory { list(): string[]; add(id: string): void; remove(id: string): void; subscribe(listener: () => void): () => void }`; `createLocalStorageDirectory(storage?: Storage, key?: string): AccountDirectory` (ключ по умолчанию `minibank.accounts`); `DirectoryProvider` (принимает необязательный `directory`); `useAccountDirectory(): { ids: string[]; add(id: string): void; remove(id: string): void }` (подписка через `useSyncExternalStore`; `ids` стабильная ссылка, пока данные не изменились).
 
-- [ ] **Step 1: Написать падающие тесты**
+- [ ] **Шаг 1: Написать падающие тесты**
 
 - `isGuid`: валидный GUID в нижнем и верхнем регистре → `true`; `''`, `'abc'`, GUID с лишним символом → `false`.
 - `directory`: `add` сохраняет ID; повторный `add` не создаёт дубль; `remove` удаляет; `list` после `add` двух ID сохраняет порядок добавления; битый JSON в хранилище → `[]`; JSON не массив → `[]`; нестроковые и не-GUID элементы отфильтровываются; `add` не-GUID игнорируется; после `add`/`remove` вызывается `subscribe`-слушатель.
 
-- [ ] **Step 2: Запустить, убедиться в красном** — `npm test -- --run src/shared/guid.test.ts src/features/accounts/directory.test.ts`. Expected: FAIL.
+- [ ] **Шаг 2: Запустить, убедиться в красном** — `npm test -- --run src/shared/guid.test.ts src/features/accounts/directory.test.ts`. Ожидается: FAIL.
 
-- [ ] **Step 3: Реализовать** (внутри `try/catch` вокруг `JSON.parse` и записи в `storage`; при недоступном `localStorage` падать не должно).
+- [ ] **Шаг 3: Реализовать** (внутри `try/catch` вокруг `JSON.parse` и записи в `storage`; при недоступном `localStorage` падать не должно).
 
-- [ ] **Step 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Expected: PASS.
+- [ ] **Шаг 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Ожидается: PASS.
 
-- [ ] **Step 5: Commit** `feat(web): account directory backed by localStorage`
+- [ ] **Шаг 5: Commit** `feat(web): account directory backed by localStorage`
 
 ---
 
-### Task 5: Тема
+### Задача 5: Тема
 
-**Files:**
-- Create: `web/src/styles/tokens.css`, `web/src/styles/global.css`, `web/src/shared/theme.ts`, `web/src/shared/ThemeToggle.tsx`
-- Modify: `web/index.html` (инлайн-скрипт до отрисовки), `web/src/main.tsx` (импорт стилей)
-- Test: `web/src/shared/theme.test.tsx`
+**Файлы:**
+- Создать: `web/src/styles/tokens.css`, `web/src/styles/global.css`, `web/src/shared/theme.ts`, `web/src/shared/ThemeToggle.tsx`
+- Изменить: `web/index.html` (инлайн-скрипт до отрисовки), `web/src/main.tsx` (импорт стилей)
+- Тест: `web/src/shared/theme.test.tsx`
 
-**Interfaces:**
-- Produces: `type Theme = 'light' | 'dark'`; `THEME_KEY = 'minibank.theme'`; `resolveInitialTheme(stored: string | null, prefersDark: boolean): Theme`; `useTheme(): { theme: Theme; toggle(): void }` (пишет `data-theme` на `document.documentElement` и значение в `localStorage`); `ThemeToggle` (кнопка с `aria-label` «Переключить тему», иконка солнца/луны). `tokens.css` задаёт переменные: `--bg`, `--card`, `--line`, `--text`, `--muted`, `--hero`, `--hero-text`, `--hero-muted`, `--chip`, `--pos`, `--tile`, `--tile-icon`, `--tile-main`, `--tile-main-icon`, `--danger` для `[data-theme="light"]` и `[data-theme="dark"]` (значения из Global Constraints и утверждённого макета).
+**Интерфейсы:**
+- Даёт: `type Theme = 'light' | 'dark'`; `THEME_KEY = 'minibank.theme'`; `resolveInitialTheme(stored: string | null, prefersDark: boolean): Theme`; `useTheme(): { theme: Theme; toggle(): void }` (пишет `data-theme` на `document.documentElement` и значение в `localStorage`); `ThemeToggle` (кнопка с `aria-label` «Переключить тему», иконка солнца/луны). `tokens.css` задаёт переменные: `--bg`, `--card`, `--line`, `--text`, `--muted`, `--hero`, `--hero-text`, `--hero-muted`, `--chip`, `--pos`, `--tile`, `--tile-icon`, `--tile-main`, `--tile-main-icon`, `--danger` для `[data-theme="light"]` и `[data-theme="dark"]` (значения из Global Constraints и утверждённого макета).
 
-- [ ] **Step 1: Написать падающие тесты**
+- [ ] **Шаг 1: Написать падающие тесты**
 
 - `resolveInitialTheme('dark', false)` → `dark`; `('light', true)` → `light`; `(null, true)` → `dark`; `(null, false)` → `light`; `('мусор', true)` → `dark`.
 - Компонентный: `render(<ThemeToggle />)` при пустом хранилище и `prefersDark = false` → `document.documentElement.dataset.theme === 'light'`; клик по кнопке → `dark` и `localStorage.getItem(THEME_KEY) === 'dark'`; второй клик → `light`. `matchMedia` подменяется в тесте.
 
-- [ ] **Step 2: Запустить, убедиться в красном** — `npm test -- --run src/shared/theme.test.tsx`. Expected: FAIL.
+- [ ] **Шаг 2: Запустить, убедиться в красном** — `npm test -- --run src/shared/theme.test.tsx`. Ожидается: FAIL.
 
-- [ ] **Step 3: Реализовать** `theme.ts`, `ThemeToggle.tsx`, стили; в `index.html` инлайн-скрипт повторяет логику `resolveInitialTheme` и ставит `data-theme` до загрузки бандла.
+- [ ] **Шаг 3: Реализовать** `theme.ts`, `ThemeToggle.tsx`, стили; в `index.html` инлайн-скрипт повторяет логику `resolveInitialTheme` и ставит `data-theme` до загрузки бандла.
 
-- [ ] **Step 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Expected: PASS.
+- [ ] **Шаг 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Ожидается: PASS.
 
-- [ ] **Step 5: Commit** `feat(web): light and dark themes with toggle`
+- [ ] **Шаг 5: Commit** `feat(web): light and dark themes with toggle`
 
 ---
 
-### Task 6: Общие UI-компоненты и каркас приложения
+### Задача 6: Общие UI-компоненты и каркас приложения
 
-**Files:**
-- Create: `web/src/shared/ui/ActionTile.tsx`, `Button.tsx`, `TextField.tsx`, `ErrorNotice.tsx`, `AppShell.tsx` (+ `*.module.css`), `web/src/shared/ui/index.ts`
-- Test: `web/src/shared/ui/ui.test.tsx`
+**Файлы:**
+- Создать: `web/src/shared/ui/ActionTile.tsx`, `Button.tsx`, `TextField.tsx`, `ErrorNotice.tsx`, `AppShell.tsx` (+ `*.module.css`), `web/src/shared/ui/index.ts`
+- Тест: `web/src/shared/ui/ui.test.tsx`
 
-**Interfaces:**
-- Consumes: `describeError` из `api/errors`, `ThemeToggle`.
-- Produces: `ActionTile({ icon: ReactNode; label: string; to?: string; onClick?: () => void; primary?: boolean })` (с `to` — ссылка react-router, иначе кнопка; квадратная плитка со скруглением ~22px, подпись снизу); `Button({ children; pending?: boolean; variant?: 'primary' | 'secondary'; type? ...rest })` (при `pending` неактивна и `aria-busy`; радиус ~14px, как в макете); `TextField({ label: string; error?: string; ...input props })` (связывает `label`, `aria-invalid`, `aria-describedby` с текстом ошибки); `ErrorNotice({ error: unknown; onRetry?: () => void })` (`role="alert"`, кнопка «Повторить» только если `describeError(error).retryable` и есть `onRetry`); `AppShell` (шапка «MiniBank» со ссылкой на `/`, `ThemeToggle`, `<Outlet />`).
+**Интерфейсы:**
+- Использует: `describeError` из `api/errors`, `ThemeToggle`.
+- Даёт: `ActionTile({ icon: ReactNode; label: string; to?: string; onClick?: () => void; primary?: boolean })` (с `to` — ссылка react-router, иначе кнопка; квадратная плитка со скруглением ~22px, подпись снизу); `Button({ children; pending?: boolean; variant?: 'primary' | 'secondary'; type? ...rest })` (при `pending` неактивна и `aria-busy`; радиус ~14px, как в макете); `TextField({ label: string; error?: string; ...input props })` (связывает `label`, `aria-invalid`, `aria-describedby` с текстом ошибки); `ErrorNotice({ error: unknown; onRetry?: () => void })` (`role="alert"`, кнопка «Повторить» только если `describeError(error).retryable` и есть `onRetry`); `AppShell` (шапка «MiniBank» со ссылкой на `/`, `ThemeToggle`, `<Outlet />`).
 
-- [ ] **Step 1: Написать падающие тесты**
+- [ ] **Шаг 1: Написать падающие тесты**
 
 `ActionTile` с `to` — ссылка с доступным именем из `label`; без `to` — кнопка, вызывает `onClick`; `Button pending` — `disabled`, клик не вызывает обработчик; `TextField` с `error` — `getByLabelText` находит поле, оно `aria-invalid`, текст ошибки доступен через `aria-describedby`; `ErrorNotice` для `ApiError(409)` с `onRetry` показывает «Повторить» и вызывает `onRetry`; для `ApiError(404)` кнопки нет; `role="alert"` присутствует.
 
-- [ ] **Step 2: Запустить, убедиться в красном** — `npm test -- --run src/shared/ui`. Expected: FAIL.
+- [ ] **Шаг 2: Запустить, убедиться в красном** — `npm test -- --run src/shared/ui`. Ожидается: FAIL.
 
-- [ ] **Step 3: Реализовать** (CSS Modules с переменными из `tokens.css`; иконки `@tabler/icons-react`).
+- [ ] **Шаг 3: Реализовать** (CSS Modules с переменными из `tokens.css`; иконки `@tabler/icons-react`).
 
-- [ ] **Step 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Expected: PASS.
+- [ ] **Шаг 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Ожидается: PASS.
 
-- [ ] **Step 5: Commit** `feat(web): shared UI components and app shell`
+- [ ] **Шаг 5: Commit** `feat(web): shared UI components and app shell`
 
 ---
 
-### Task 7: Роутер, главная и экран счёта
+### Задача 7: Роутер, главная и экран счёта
 
-**Files:**
-- Create: `web/src/app/router.tsx`, `web/src/app/providers.tsx`, `web/src/test/render.tsx`, `web/src/features/accounts/queries.ts`, `HomePage.tsx`, `CreateAccountForm.tsx`, `AddAccountForm.tsx`, `AccountPage.tsx`, `BalanceCard.tsx`, `EntryRow.tsx`, `index.ts` (+ `*.module.css`)
-- Modify: `web/src/app/App.tsx`, `web/src/main.tsx`
-- Test: `web/src/features/accounts/accounts.test.tsx`
+**Файлы:**
+- Создать: `web/src/app/router.tsx`, `web/src/app/providers.tsx`, `web/src/test/render.tsx`, `web/src/features/accounts/queries.ts`, `HomePage.tsx`, `CreateAccountForm.tsx`, `AddAccountForm.tsx`, `AccountPage.tsx`, `BalanceCard.tsx`, `EntryRow.tsx`, `index.ts` (+ `*.module.css`)
+- Изменить: `web/src/app/App.tsx`, `web/src/main.tsx`
+- Тест: `web/src/features/accounts/accounts.test.tsx`
 
-**Interfaces:**
-- Consumes: `api` (Task 3), `useAccountDirectory` (Task 4), UI (Task 6), `formatMoney`.
-- Produces: `createAppRouter(initialEntries?: string[])` (при `initialEntries` — memory router) с маршрутами `/`, `/accounts/:id`, `/accounts/:id/deposit`, `/accounts/:id/transfer`, `/accounts/:id/entries` под `AppShell` (пока deposit/transfer/entries — заглушки, заменяются в Tasks 8–9); `AppProviders` (QueryClient, `DirectoryProvider`); тестовый `renderApp(path: string, options?: { directory?: AccountDirectory })` (QueryClient без ретраев, memory router); `queries.ts`: `useAccount(id: string | undefined)` (не отправляет запрос для не-GUID; `retry` отключён для 404), `useEntries(id: string, page: number, pageSize: number)`, `useCreateAccount()`, ключи `accountKeys`; `EntryRow({ entry: Entry; currency: CurrencyCode })`.
+**Интерфейсы:**
+- Использует: `api` (Задача 3), `useAccountDirectory` (Задача 4), UI (Задача 6), `formatMoney`.
+- Даёт: `createAppRouter(initialEntries?: string[])` (при `initialEntries` — memory router) с маршрутами `/`, `/accounts/:id`, `/accounts/:id/deposit`, `/accounts/:id/transfer`, `/accounts/:id/entries` под `AppShell` (пока deposit/transfer/entries — заглушки, заменяются в Задачи 8–9); `AppProviders` (QueryClient, `DirectoryProvider`); тестовый `renderApp(path: string, options?: { directory?: AccountDirectory })` (QueryClient без ретраев, memory router); `queries.ts`: `useAccount(id: string | undefined)` (не отправляет запрос для не-GUID; `retry` отключён для 404), `useEntries(id: string, page: number, pageSize: number)`, `useCreateAccount()`, ключи `accountKeys`; `EntryRow({ entry: Entry; currency: CurrencyCode })`.
 
 Поведение:
 - `/`: для каждого ID из директории строка-карточка со ссылкой на счёт (владелец и баланс, загружаются через `useAccount`); пустое состояние «Откройте первый счёт» и форма «Открыть счёт» (имя владельца, выбор валюты) → `api.createAccount` → `directory.add` → переход на `/accounts/:id`; форма «Добавить по ID»: не-GUID → ошибка поля без запроса; 404 → ошибка, ID не добавляется; успех → ID добавляется и открывается счёт.
 - `/accounts/:id`: карточка баланса и плитки «Пополнить» (primary, `/deposit`), «Перевести» (`/transfer`), «Выписка» (`/entries`), «Реквизиты» (копирует ID в буфер обмена, на 2 с подпись «Скопировано»); блок «Последние операции» (`useEntries(id, 1, 5)`, `EntryRow`: «Зачисление»/«Списание» по знаку суммы, дата, остаток; плюс зелёным); 404 или не-GUID → «Счёт не найден» и кнопка «Убрать из списка» (удаляет из директории, ведёт на `/`); другие ошибки через `ErrorNotice` с «Повторить».
 
-- [ ] **Step 1: Написать падающие тесты (MSW + `renderApp`)**
+- [ ] **Шаг 1: Написать падающие тесты (MSW + `renderApp`)**
 
 - Главная: пустая директория → есть «Открыть счёт»; создание счёта отправляет `POST /api/accounts` с `{ owner, currency }`, добавляет ID в директорию и показывает экран счёта с балансом `0,00 ₽`; «Добавить по ID» с не-GUID показывает ошибку и не вызывает запрос (`onUnhandledRequest: 'error'` ловит лишний запрос); с 404 — ошибка и ID не добавлен; директория с двумя ID показывает обе карточки с балансом.
 - Экран счёта: баланс `12 450,00 ₽` в карточке; три операции из `entries` с подписями «Зачисление»/«Списание» и знаком; ссылка «Пополнить» ведёт на `/accounts/:id/deposit`; клик «Реквизиты» вызывает `navigator.clipboard.writeText` с ID.
 - `/accounts/not-a-guid`: «Счёт не найден», ни одного запроса; `/accounts/<неизвестный GUID>` с 404: то же, «Убрать из списка» удаляет ID из директории; битый JSON в `localStorage` → главная с пустым состоянием, без падения; 500 → `ErrorNotice` без технических деталей.
 
-- [ ] **Step 2: Запустить, убедиться в красном** — `npm test -- --run src/features/accounts/accounts.test.tsx`. Expected: FAIL.
+- [ ] **Шаг 2: Запустить, убедиться в красном** — `npm test -- --run src/features/accounts/accounts.test.tsx`. Ожидается: FAIL.
 
-- [ ] **Step 3: Реализовать** роутер, провайдеры, страницы и формы; `main.tsx` рендерит `RouterProvider` внутри `AppProviders`.
+- [ ] **Шаг 3: Реализовать** роутер, провайдеры, страницы и формы; `main.tsx` рендерит `RouterProvider` внутри `AppProviders`.
 
-- [ ] **Step 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Expected: PASS.
+- [ ] **Шаг 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Ожидается: PASS.
 
-- [ ] **Step 5: Commit** `feat(web): home page, account creation and account screen`
+- [ ] **Шаг 5: Commit** `feat(web): home page, account creation and account screen`
 
 ---
 
-### Task 8: Пополнение и перевод с идемпотентностью
+### Задача 8: Пополнение и перевод с идемпотентностью
 
-**Files:**
-- Create: `web/src/features/transfers/useIdempotentKey.ts`, `DepositPage.tsx`, `TransferPage.tsx`, `mutations.ts`, `index.ts` (+ `*.module.css`)
-- Modify: `web/src/app/router.tsx` (заменить заглушки)
-- Test: `web/src/features/transfers/useIdempotentKey.test.ts`, `web/src/features/transfers/transfers.test.tsx`
+**Файлы:**
+- Создать: `web/src/features/transfers/useIdempotentKey.ts`, `DepositPage.tsx`, `TransferPage.tsx`, `mutations.ts`, `index.ts` (+ `*.module.css`)
+- Изменить: `web/src/app/router.tsx` (заменить заглушки)
+- Тест: `web/src/features/transfers/useIdempotentKey.test.ts`, `web/src/features/transfers/transfers.test.tsx`
 
-**Interfaces:**
-- Consumes: `api.deposit`, `api.transfer`, `useAccount`, `parseMoney`, `isGuid`, `useAccountDirectory`, UI.
-- Produces: `useIdempotentKey(deps: readonly unknown[]): { key: string; rotate(): void }` (новый `randomUUID()` при смене значений `deps` и при `rotate()`; между рендерами без изменений ключ стабилен); `useDeposit(accountId: string)` и `useTransfer()` — мутации на TanStack Query, при успехе инвалидируют `accountKeys` и записи счёта-источника (и получателя для перевода).
+**Интерфейсы:**
+- Использует: `api.deposit`, `api.transfer`, `useAccount`, `parseMoney`, `isGuid`, `useAccountDirectory`, UI.
+- Даёт: `useIdempotentKey(deps: readonly unknown[]): { key: string; rotate(): void }` (новый `randomUUID()` при смене значений `deps` и при `rotate()`; между рендерами без изменений ключ стабилен); `useDeposit(accountId: string)` и `useTransfer()` — мутации на TanStack Query, при успехе инвалидируют `accountKeys` и записи счёта-источника (и получателя для перевода).
 
 Поведение:
 - Форма пополнения (`/accounts/:id/deposit`): поле «Сумма» (`inputMode="decimal"`), валюта — из счёта и показывается текстом, не выбирается; ключ зависит от `[accountId, amount-текст]`; ошибка `parseMoney` показывается у поля без запроса; кнопка «Пополнить» неактивна, пока идёт запрос (`pending`); успех → `rotate()` и переход на `/accounts/:id`; ошибка → `ErrorNotice` (для 409 с «Повторить», тот же ключ).
 - Форма перевода (`/accounts/:id/transfer`): «ID получателя» (с `datalist` из «моих счетов» кроме текущего) и «Сумма»; ключ зависит от `[fromId, toId, amount-текст]`; клиентские проверки до запроса: получатель — GUID, получатель ≠ источник («Нельзя перевести на тот же счёт»), сумма корректна; валюта из счёта-источника; успех → `rotate()`, переход на `/accounts/:id`; 422 (в т.ч. разные валюты, недостаточно средств) → текст ошибки рядом с формой.
 - Оба экрана при 404 счёта-источника показывают «Счёт не найден».
 
-- [ ] **Step 1: Написать падающие тесты**
+- [ ] **Шаг 1: Написать падающие тесты**
 
 - `useIdempotentKey`: `renderHook` — ключ одинаков между рендерами; меняется при смене `deps`; `rotate()` меняет ключ; ключ имеет формат UUID.
 - Пополнение: ввод `250` → один `POST /api/accounts/:id/deposit` с `{ amount: 25000, currency: 'RUB' }` и заголовком `Idempotency-Key`; двойной клик по «Пополнить», пока запрос в полёте, → ровно один запрос; сетевая ошибка (`HttpResponse.error()`) затем повторное нажатие → второй запрос с тем же ключом; правка суммы после ошибки → следующий запрос с другим ключом; успешная операция, затем новая операция → другой ключ; `'1,234'`, `''`, `'0'`, `'abc'` → ошибка поля, запросов нет; 409 → показан «Повторить», клик шлёт тот же ключ.
 - Перевод: получатель не GUID → ошибка без запроса; получатель = источник → «Нельзя перевести на тот же счёт» без запроса; корректный перевод шлёт `{ fromAccountId, toAccountId, amount, currency }` с валютой источника; 422 с `detail` показывает `ErrorNotice` с `hint`; заголовок `Idempotent-Replayed: true` трактуется как успех (переход на счёт).
 
-- [ ] **Step 2: Запустить, убедиться в красном** — `npm test -- --run src/features/transfers`. Expected: FAIL.
+- [ ] **Шаг 2: Запустить, убедиться в красном** — `npm test -- --run src/features/transfers`. Ожидается: FAIL.
 
-- [ ] **Step 3: Реализовать** хук, мутации и страницы; заглушки в роутере заменить на страницы.
+- [ ] **Шаг 3: Реализовать** хук, мутации и страницы; заглушки в роутере заменить на страницы.
 
-- [ ] **Step 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Expected: PASS.
+- [ ] **Шаг 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Ожидается: PASS.
 
-- [ ] **Step 5: Commit** `feat(web): deposit and transfer forms with idempotency keys`
+- [ ] **Шаг 5: Commit** `feat(web): deposit and transfer forms with idempotency keys`
 
 ---
 
-### Task 9: Выписка
+### Задача 9: Выписка
 
-**Files:**
-- Create: `web/src/features/entries/EntriesPage.tsx`, `queries.ts`, `index.ts` (+ `*.module.css`)
-- Modify: `web/src/app/router.tsx` (заменить заглушку `/accounts/:id/entries`)
-- Test: `web/src/features/entries/entries.test.tsx`
+**Файлы:**
+- Создать: `web/src/features/entries/EntriesPage.tsx`, `queries.ts`, `index.ts` (+ `*.module.css`)
+- Изменить: `web/src/app/router.tsx` (заменить заглушку `/accounts/:id/entries`)
+- Тест: `web/src/features/entries/entries.test.tsx`
 
-**Interfaces:**
-- Consumes: `api.getEntries`, `useAccount`, `EntryRow` (публичный индекс `features/accounts`), UI.
-- Produces: `useEntriesInfinite(id: string, pageSize: number)` на `useInfiniteQuery` (`initialPageParam: 1`, `getNextPageParam` возвращает следующую страницу, пока последняя страница полная); `EntriesPage` с `pageSize = 20`.
+**Интерфейсы:**
+- Использует: `api.getEntries`, `useAccount`, `EntryRow` (публичный индекс `features/accounts`), UI.
+- Даёт: `useEntriesInfinite(id: string, pageSize: number)` на `useInfiniteQuery` (`initialPageParam: 1`, `getNextPageParam` возвращает следующую страницу, пока последняя страница полная); `EntriesPage` с `pageSize = 20`.
 
 Поведение: список операций новыми первыми; кнопка «Показать ещё» подгружает следующую страницу и скрывается, когда последняя страница короче `pageSize`; пустой список → «Операций пока нет» и ссылка «Пополнить»; ошибка → `ErrorNotice` с «Повторить»; 404 → «Счёт не найден».
 
-- [ ] **Step 1: Написать падающие тесты**
+- [ ] **Шаг 1: Написать падающие тесты**
 
 20 записей на первой странице → «Показать ещё» есть; клик запрашивает `page=2&pageSize=20`, добавляет записи, вторая страница из 5 записей → кнопка исчезает; страница из ровно 20 записей и следующий пустой ответ → кнопка исчезает после пустого ответа; пустой ответ сразу → «Операций пока нет» и ссылка «Пополнить»; 500 → `ErrorNotice`.
 
-- [ ] **Step 2: Запустить, убедиться в красном** — `npm test -- --run src/features/entries`. Expected: FAIL.
+- [ ] **Шаг 2: Запустить, убедиться в красном** — `npm test -- --run src/features/entries`. Ожидается: FAIL.
 
-- [ ] **Step 3: Реализовать**
+- [ ] **Шаг 3: Реализовать**
 
-- [ ] **Step 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Expected: PASS.
+- [ ] **Шаг 4: Запустить, убедиться в зелёном** — `npm test -- --run && npm run build`. Ожидается: PASS.
 
-- [ ] **Step 5: Commit** `feat(web): account statement with pagination`
+- [ ] **Шаг 5: Commit** `feat(web): account statement with pagination`
 
 ---
 
-### Task 10: Документация и сквозная проверка
+### Задача 10: Документация и сквозная проверка
 
-**Files:**
-- Modify: `README.md` (раздел «Web»: Node 20+, `cd web && npm install && npm run dev`, открыть `http://localhost:5173`, API на `localhost:5050`, `npm run gen:api`, `npm test`), `docs/specs/2026-10-31-minibank-web-design.md` (только если по ходу работ факт разошёлся со спекой)
-- Test: сквозной ручной прогон (автотестов нет: e2e откладывается на этап 3)
+**Файлы:**
+- Изменить: `README.md` (раздел «Web»: Node 20+, `cd web && npm install && npm run dev`, открыть `http://localhost:5173`, API на `localhost:5050`, `npm run gen:api`, `npm test`), `docs/specs/2026-10-31-minibank-web-design.md` (только если по ходу работ факт разошёлся со спекой)
+- Тест: сквозной ручной прогон (автотестов нет: e2e откладывается на этап 3)
 
-- [ ] **Step 1: Обновить README**
+- [ ] **Шаг 1: Обновить README**
 
-- [ ] **Step 2: Полная проверка сборки и тестов**
+- [ ] **Шаг 2: Полная проверка сборки и тестов**
 
-Run: `npm test -- --run && npm run build` в `web/`. Expected: все тесты зелёные, сборка без ошибок. Затем `dotnet test` в корне. Expected: 139 тестов зелёные (бэкенд не менялся).
+Запустить: `npm test -- --run && npm run build` в `web/`. Ожидается: все тесты зелёные, сборка без ошибок. Затем `dotnet test` в корне. Ожидается: 139 тестов зелёные (бэкенд не менялся).
 
-- [ ] **Step 3: Ручной прогон с настоящим API**
+- [ ] **Шаг 3: Ручной прогон с настоящим API**
 
 Поднять `docker compose up -d`, `dotnet run --project src/MiniBank.Api`, `npm run dev` в `web/`; в браузере: открыть счёт Алисы и Боба (RUB), пополнить Алису на `1000`, перевести Бобу `300,50`, проверить балансы и выписку; повторить перевод двойным кликом (ровно одна операция); перевести с недостаточной суммой (текст 422 рядом с формой); открыть `/accounts/abc` и неизвестный GUID; переключить тему и перезагрузить страницу (тема сохранена, без вспышки); остановить API и отправить форму (сообщение «Нет связи с сервером»). Остановить серверы.
 
-- [ ] **Step 4: Commit** `docs: web client usage in README`
+- [ ] **Шаг 4: Commit** `docs: web client usage in README`
